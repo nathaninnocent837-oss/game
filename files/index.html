@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>TRUGO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=2">
+</head>
+<body>
+
+<!-- ===================== ECRAN DE CHARGEMENT ===================== -->
+<section id="screen-loading" class="screen active">
+  <div class="loading-wrap">
+    <h1 class="logo">TRU<span>GO</span></h1>
+    <div class="progress-track">
+      <div class="progress-fill" id="loading-fill"></div>
+    </div>
+    <p class="loading-label" id="loading-label">Préparation de l'arène…</p>
+  </div>
+</section>
+
+<!-- ===================== ECRAN DE CONNEXION ===================== -->
+<section id="screen-login" class="screen">
+  <div class="login-card">
+    <h1 class="logo small">TRU<span>GO</span></h1>
+    <p class="login-sub">Entre dans l'arène</p>
+    <form id="login-form" autocomplete="off">
+      <label class="field">
+        <span>Nom</span>
+        <input type="text" id="login-name" maxlength="16" placeholder="Ton pseudo" required>
+      </label>
+      <label class="field">
+        <span>Mot de passe</span>
+        <input type="password" id="login-pass" maxlength="24" placeholder="••••••••" required>
+      </label>
+      <p class="field-note">Connexion enregistrée uniquement sur cet appareil.</p>
+      <button type="submit" class="btn-primary">Se connecter</button>
+    </form>
+  </div>
+</section>
+
+<!-- ===================== LOBBY ===================== -->
+<section id="screen-lobby" class="screen">
+  <canvas id="lobby-canvas"></canvas>
+
+  <div class="hud-top-left">
+    <button class="icon-btn" id="btn-friends" aria-label="Amis">
+      <svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>
+      <span>Amis</span>
+    </button>
+  </div>
+
+  <div class="hud-top-right">
+    <button class="icon-btn" id="btn-team" aria-label="Équipe">
+      <svg viewBox="0 0 24 24"><path d="M17 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM7 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm10 2c-2 0-6 1-6 3v3h9v-3c0-2-1-3-3-3ZM7 13c-2.8 0-7 1.4-7 3.2V19h9v-2.8c0-.7.2-1.4.6-2.1C8.7 13.4 7.8 13 7 13Z"/></svg>
+      <span>Équipe</span>
+    </button>
+  </div>
+
+  <div class="hud-bottom-left">
+    <button class="icon-btn stacked" id="btn-character" aria-label="Personnage">
+      <svg viewBox="0 0 24 24"><path d="M12 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 12c-4.4 0-8 2.2-8 5v3h16v-3c0-2.8-3.6-5-8-5Z"/></svg>
+      <span>Personnage</span>
+    </button>
+    <button class="icon-btn stacked disabled" id="btn-shop" aria-label="Magasin">
+      <svg viewBox="0 0 24 24"><path d="M4 8l1-4h14l1 4M4 8v11a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V8M4 8h16M9 12a3 3 0 0 0 6 0"/></svg>
+      <span>Magasin</span>
+    </button>
+    <button class="icon-btn stacked" id="btn-equipment" aria-label="Équipement">
+      <svg viewBox="0 0 24 24"><path d="m14.5 4.5 5 5M13 6l5 5M4 20l5.5-5.5M6.5 3.5l14 14M3.5 6.5l14 14M8 8l8 8"/></svg>
+      <span>Équipement</span>
+    </button>
+  </div>
+
+  <div class="hud-bottom-right">
+    <button class="play-btn" id="btn-play">
+      <span>JOUER</span>
+    </button>
+  </div>
+
+  <div class="hud-top-center">
+    <span id="lobby-username" class="player-tag"></span>
+  </div>
+</section>
+
+<!-- ===================== PANNEAU EQUIPEMENT ===================== -->
+<div id="panel-equipment" class="panel">
+  <div class="panel-inner equipment-panel">
+    <div class="panel-head">
+      <h2>Équipement</h2>
+      <button class="panel-close" data-close="panel-equipment">&times;</button>
+    </div>
+    <p class="panel-note equipment-intro">Choisis les équipements disponibles pour cette partie.</p>
+    <div class="equipment-list">
+      <button class="equipment-card selected" data-equipment="ice">
+        <span class="equipment-icon ice-icon">❄</span>
+        <span><strong>Équipement de glace</strong><small>Gèle le combattant le plus proche pendant 3 secondes.</small></span>
+        <span class="equipment-check">✓</span>
+      </button>
+      <button class="equipment-card selected" data-equipment="fog">
+        <span class="equipment-icon fog-icon">◌</span>
+        <span><strong>Équipement de brouillard</strong><small>Aveugle les adversaires pendant 7 secondes.</small></span>
+        <span class="equipment-check">✓</span>
+      </button>
+      <button class="equipment-card selected" data-equipment="heal">
+        <span class="equipment-icon heal-icon">+</span>
+        <span><strong>Soin instantané</strong><small>Restaure tous les points de vie immédiatement.</small></span>
+        <span class="equipment-check">✓</span>
+      </button>
+    </div>
+    <p class="panel-note">Un équipement peut être utilisé une fois par partie.</p>
+  </div>
+</div>
+
+<!-- ===================== PANNEAU AMIS ===================== -->
+<div id="panel-friends" class="panel">
+  <div class="panel-inner">
+    <div class="panel-head">
+      <h2>Amis</h2>
+      <button class="panel-close" data-close="panel-friends">&times;</button>
+    </div>
+    <div class="field search-field">
+      <input type="text" id="friends-search" placeholder="Rechercher un joueur…">
+    </div>
+    <div class="panel-section">
+      <h3>Résultats</h3>
+      <ul id="friends-results" class="friend-list"></ul>
+    </div>
+    <div class="panel-section">
+      <h3>Mes amis</h3>
+      <ul id="friends-mine" class="friend-list"></ul>
+    </div>
+    <p class="panel-note">Liste stockée sur cet appareil pour l'instant.</p>
+  </div>
+</div>
+
+<!-- ===================== PANNEAU EQUIPE ===================== -->
+<div id="panel-team" class="panel">
+  <div class="panel-inner">
+    <div class="panel-head">
+      <h2>Équipe</h2>
+      <button class="panel-close" data-close="panel-team">&times;</button>
+    </div>
+    <div class="panel-section team-code-section">
+      <h3>Ton code d'équipe</h3>
+      <div class="team-code-display" id="team-code-display">--------</div>
+      <button class="btn-secondary" id="btn-generate-code">Générer un nouveau code</button>
+    </div>
+    <div class="panel-section">
+      <h3>Rejoindre une équipe</h3>
+      <div class="join-row">
+        <input type="text" id="join-code-input" maxlength="8" placeholder="Code à 8 chiffres">
+        <button class="btn-secondary" id="btn-join-code">Rejoindre</button>
+      </div>
+      <p id="join-code-feedback" class="field-note"></p>
+    </div>
+    <p class="panel-note">Simulation locale pour l'instant, en attendant un serveur.</p>
+  </div>
+</div>
+
+<!-- ===================== PANNEAU PERSONNAGE ===================== -->
+<div id="panel-character" class="panel">
+  <div class="panel-inner">
+    <div class="panel-head">
+      <h2>Personnage</h2>
+      <button class="panel-close" data-close="panel-character">&times;</button>
+    </div>
+    <div class="panel-section">
+      <h3>Couleur de tenue</h3>
+      <div class="swatch-row" id="swatch-outfit"></div>
+    </div>
+    <div class="panel-section">
+      <h3>Couleur d'épée</h3>
+      <div class="swatch-row" id="swatch-sword"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== ECRAN RECHERCHE DE PARTIE ===================== -->
+<section id="screen-matchmaking" class="screen">
+  <div class="mm-wrap">
+    <div class="mm-spinner"></div>
+    <h2 id="mm-status">Recherche de joueurs…</h2>
+    <p id="mm-timer" class="mm-timer">10</p>
+    <button class="btn-secondary" id="btn-cancel-mm">Annuler</button>
+  </div>
+</section>
+
+<!-- ===================== ECRAN DE PARTIE ===================== -->
+<section id="screen-match" class="screen">
+  <canvas id="match-canvas"></canvas>
+
+  <div class="match-top-center">
+    <div class="match-timer" id="match-timer">4:00</div>
+    <div class="elim-feed" id="elim-feed"></div>
+  </div>
+
+  <div class="match-top-left">
+    <div class="leaderboard" id="leaderboard">
+      <h4>Classement</h4>
+      <ol id="leaderboard-list"></ol>
+    </div>
+  </div>
+
+  <div class="match-status" id="match-status" aria-live="polite"></div>
+
+  <div class="hp-bar-wrap">
+    <div class="hp-bar"><div class="hp-fill" id="hp-fill"></div></div>
+    <span class="hp-label" id="hp-label">750 / 750</span>
+  </div>
+
+  <div class="joystick-zone" id="joystick-zone">
+    <div class="joystick-base">
+      <div class="joystick-knob" id="joystick-knob"></div>
+    </div>
+  </div>
+
+  <button class="attack-btn" id="btn-attack">
+    <svg viewBox="0 0 24 24"><path d="M6.9 21.1 2.9 17.1 15 5l4 4L6.9 21.1Zm10.4-14.4-2-2 2.6-2.6c.5-.5 1.4-.5 2 0l0 0c.5.5.5 1.4 0 2l-2.6 2.6Z"/></svg>
+  </button>
+
+  <div class="equipment-actions" aria-label="Équipements actifs">
+    <button class="ability-btn ability-ice" id="ability-ice" title="Glace" aria-label="Utiliser la glace"><span>❄</span><small>Glace</small></button>
+    <button class="ability-btn ability-fog" id="ability-fog" title="Brouillard" aria-label="Utiliser le brouillard"><span>◌</span><small>Brouillard</small></button>
+    <button class="ability-btn ability-heal" id="ability-heal" title="Soin" aria-label="Utiliser le soin"><span>+</span><small>Soin</small></button>
+  </div>
+
+  <div class="respawn-overlay" id="respawn-overlay">
+    <p>Éliminé</p>
+    <p class="respawn-timer" id="respawn-timer">15</p>
+  </div>
+</section>
+
+<!-- ===================== ECRAN FIN DE PARTIE ===================== -->
+<section id="screen-endmatch" class="screen">
+  <div class="end-card">
+    <h2>Partie terminée</h2>
+    <ol id="end-leaderboard" class="end-leaderboard"></ol>
+    <p class="end-note">Retour au lobby…</p>
+  </div>
+</section>
+
+<!-- ===================== VERROU D'ORIENTATION ===================== -->
+<div id="orientation-lock">
+  <svg viewBox="0 0 24 24" class="rotate-icon"><path d="M16.5 3.5 20 7l-3.5 3.5M20 7H9a4 4 0 0 0-4 4v1M7.5 20.5 4 17l3.5-3.5M4 17h11a4 4 0 0 0 4-4v-1"/></svg>
+  <p>Tourne ton appareil pour jouer</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
