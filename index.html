@@ -222,11 +222,16 @@
     </div>
   </div>
 
+  <button class="icon-btn match-equipment-btn" id="btn-match-equipment" aria-label="Équipement">
+    <svg viewBox="0 0 24 24"><path d="m14.5 4.5 5 5M13 6l5 5M4 20l5.5-5.5M6.5 3.5l14 14M3.5 6.5l14 14M8 8l8 8"/></svg>
+    <span>Équipement</span>
+  </button>
+
   <button class="attack-btn" id="btn-attack">
     <svg viewBox="0 0 24 24"><path d="M6.9 21.1 2.9 17.1 15 5l4 4L6.9 21.1Zm10.4-14.4-2-2 2.6-2.6c.5-.5 1.4-.5 2 0l0 0c.5.5.5 1.4 0 2l-2.6 2.6Z"/></svg>
   </button>
 
-  <div class="equipment-actions" aria-label="Équipements actifs">
+  <div class="equipment-actions" id="equipment-actions" aria-label="Équipements actifs">
     <button class="ability-btn ability-ice" id="ability-ice" title="Glace" aria-label="Utiliser la glace"><span>❄</span><small>Glace</small></button>
     <button class="ability-btn ability-fog" id="ability-fog" title="Brouillard" aria-label="Utiliser le brouillard"><span>◌</span><small>Brouillard</small></button>
     <button class="ability-btn ability-heal" id="ability-heal" title="Soin" aria-label="Utiliser le soin"><span>+</span><small>Soin</small></button>
@@ -246,6 +251,25 @@
     <p class="end-note">Retour au lobby…</p>
   </div>
 </section>
+
+<!-- ===================== PANNEAU SAISON / MEDAILLES ===================== -->
+<div id="panel-season" class="panel">
+  <div class="panel-inner season-panel">
+    <div class="panel-head">
+      <h2>Classement de la saison</h2>
+      <button class="panel-close" data-close="panel-season">&times;</button>
+    </div>
+    <div class="season-timer-wrap">
+      <span class="panel-note">Fin de la saison dans</span>
+      <div class="season-timer" id="season-timer">--</div>
+    </div>
+    <div class="season-board-wrap">
+      <div class="fire-bg" aria-hidden="true"></div>
+      <ol id="season-leaderboard" class="season-leaderboard"></ol>
+    </div>
+    <p class="panel-note">Une nouvelle saison remet les médailles de tout le monde à 0.</p>
+  </div>
+</div>
 
 <!-- ===================== VERROU D'ORIENTATION ===================== -->
 <div id="orientation-lock">

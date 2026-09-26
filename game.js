@@ -51,6 +51,101 @@ const EQUIPMENT_NAMES = {
 };
 
 /* ---------------------------------------------------------
+   SAISON DES MEDAILLES
+   Reset automatique tous les 1ers mercredis du mois à 8h.
+--------------------------------------------------------- */
+function firstWednesdayOfMonth(year, month){
+  const d = new Date(year, month, 1, 8, 0, 0, 0);
+  const day = d.getDay(); // 0=dimanche ... 3=mercredi
+  const offset = (3 - day + 7) % 7;
+  d.setDate(1 + offset);
+  return d;
+}
+function getSeasonWindow(now){
+  const boundaryThisMonth = firstWednesdayOfMonth(now.getFullYear(), now.getMonth());
+  if (now < boundaryThisMonth){
+    const prevMonthDate = new Date(now.getFullYear(), now.getMonth()-1, 1);
+    const start = firstWednesdayOfMonth(prevMonthDate.getFullYear(), prevMonthDate.getMonth());
+    return { start, end: boundaryThisMonth };
+  }
+  const nextMonthDate = new Date(now.getFullYear(), now.getMonth()+1, 1);
+  const end = firstWednesdayOfMonth(nextMonthDate.getFullYear(), nextMonthDate.getMonth());
+  return { start: boundaryThisMonth, end };
+}
+// Vérifie si une nouvelle saison a commencé depuis la dernière visite ; si oui,
+// remet les médailles du joueur à 0 et régénère le classement simulé.
+function checkSeasonReset(){
+  const now = new Date();
+  const { start, end } = getSeasonWindow(now);
+  const storedStart = Store.load('trugo_season_start', null);
+  if (storedStart !== start.toISOString()){
+    APP.points = 0;
+    Store.save('trugo_points', 0);
+    Store.save('trugo_season_start', start.toISOString());
+    Store.save('trugo_season_board', null);
+  }
+  return { start, end };
+}
+checkSeasonReset();
+
+const SEASON_BOT_COUNT = 12;
+function ensureSeasonLeaderboard(){
+  let board = Store.load('trugo_season_board', null);
+  if (board && board.length) return board;
+  const used = new Set();
+  const names = [];
+  while (names.length < SEASON_BOT_COUNT){
+    const n = BOT_NAMES[Math.floor(Math.random()*BOT_NAMES.length)] + (Math.floor(Math.random()*90)+10);
+    if (!used.has(n)){ used.add(n); names.push(n); }
+  }
+  board = names.map(name => ({ name, medals: Math.floor(Math.random()*180) + 5 }));
+  Store.save('trugo_season_board', board);
+  return board;
+}
+
+let seasonEndDate = null;
+let seasonCountdownInterval = null;
+function formatSeasonCountdown(ms){
+  if (ms <= 0) return 'Nouvelle saison !';
+  const totalSec = Math.floor(ms/1000);
+  const days = Math.floor(totalSec/86400);
+  const hours = Math.floor((totalSec%86400)/3600);
+  const minutes = Math.floor((totalSec%3600)/60);
+  return `${days}j ${hours}h ${minutes}m`;
+}
+function renderSeasonLeaderboard(){
+  const { end } = checkSeasonReset();
+  seasonEndDate = end;
+  const timerEl = document.getElementById('season-timer');
+  function tickTimer(){
+    if (!timerEl) return;
+    timerEl.textContent = formatSeasonCountdown(seasonEndDate - new Date());
+  }
+  tickTimer();
+  clearInterval(seasonCountdownInterval);
+  seasonCountdownInterval = setInterval(tickTimer, 1000*30);
+
+  const bots = ensureSeasonLeaderboard();
+  const entries = bots.map(b => ({ name: b.name, medals: b.medals, isPlayer:false }));
+  entries.push({ name: APP.username || 'Toi', medals: APP.points, isPlayer:true });
+  entries.sort((a,b)=>b.medals-a.medals);
+
+  const list = document.getElementById('season-leaderboard');
+  list.innerHTML = '';
+  entries.forEach((e,i)=>{
+    const li = document.createElement('li');
+    if (e.isPlayer) li.className = 'me';
+    const medal = medalForRank(i+1);
+    li.innerHTML = `<span><span class="rank">#${i+1}</span>${medal ? medal+' ' : ''}${escapeHtml(e.name)}</span><span>${e.medals} 🏅</span>`;
+    list.appendChild(li);
+  });
+}
+document.getElementById('lobby-points').addEventListener('click', ()=>{
+  renderSeasonLeaderboard();
+  openPanel('panel-season');
+});
+
+/* ---------------------------------------------------------
    AUDIO — cloche d'élimination + musique du mode adrénaline
    (tout est synthétisé via Web Audio, aucun fichier son requis)
 --------------------------------------------------------- */
@@ -319,7 +414,7 @@ function enterLobby(){
 
 function updateLobbyPointsUI(){
   const el = document.getElementById('lobby-points');
-  if (el) el.textContent = `🏆 ${APP.points} pts`;
+  if (el) el.textContent = `🏅 ${APP.points} médailles`;
 }
 
 /* ---------------------------------------------------------
@@ -671,6 +766,15 @@ const ATTACK_RANGE = 1.6;
 const ATTACK_COOLDOWN = 0.6;
 const TOTAL_SLOTS = 8;
 const BASE_SPEED = 1; // vitesse de base d'un personnage : 1 unité par seconde
+const MAX_TURN_RATE = Math.PI * 2.6; // rotation max (rad/s) : empêche le stick de faire "tourner" le perso sur lui-même au lieu de le déplacer
+
+function stepTowardAngle(current, target, maxStep){
+  let diff = target - current;
+  diff = ((diff + Math.PI) % (Math.PI*2) + Math.PI*2) % (Math.PI*2) - Math.PI; // normalise entre -PI et PI
+  if (diff > maxStep) diff = maxStep;
+  else if (diff < -maxStep) diff = -maxStep;
+  return current + diff;
+}
 const ADRENALINE_DURATION = 30; // secondes
 const ADRENALINE_MIN_DELAY = 30; // secondes avant que le mode puisse s'activer
 const ADRENALINE_END_MARGIN = 15; // secondes de marge avant la fin de la partie
@@ -1032,6 +1136,11 @@ const Match = (()=>{
   document.getElementById('ability-fog').addEventListener('click', ()=>useEquipment('fog'));
   document.getElementById('ability-heal').addEventListener('click', ()=>useEquipment('heal'));
 
+  // bouton "Équipement" au-dessus de l'attaque : affiche/masque les capacités utilisables
+  document.getElementById('btn-match-equipment').addEventListener('click', ()=>{
+    document.getElementById('equipment-actions').classList.toggle('open');
+  });
+
   /* ---------- Boucle de jeu ---------- */
   function getPlayer(){ return fighters.find(f=>f.isPlayer); }
 
@@ -1055,7 +1164,11 @@ const Match = (()=>{
         const worldZ = camDirZ*moveForward - camDirX*moveRight;
         const speed = BASE_SPEED * speedMultiplier;
         tryMove(f, worldX*speed*dt, worldZ*speed*dt);
-        f.rotY = Math.atan2(worldX, worldZ);
+        // on tourne progressivement vers la direction du déplacement (vitesse limitée)
+        // au lieu de faire pivoter le personnage instantanément : ça évite l'effet
+        // de "rotation sur place" et fait bien avancer le joueur dans la carte.
+        const targetRot = Math.atan2(worldX, worldZ);
+        f.rotY = stepTowardAngle(f.rotY, targetRot, MAX_TURN_RATE*dt);
       }
       if (attackRequested && f.attackCooldown <= 0){
         performAttack(f);
@@ -1418,7 +1531,7 @@ const Match = (()=>{
       const medal = medalForRank(rank);
       const medalPrefix = medal ? medal + ' ' : '';
       const deltaLabel = delta > 0 ? `+${delta}` : `${delta}`;
-      li.innerHTML = `<span>#${rank} ${medalPrefix}${escapeHtml(f.name)}</span><span>${f.kills} élim. · ${deltaLabel} pts</span>`;
+      li.innerHTML = `<span>#${rank} ${medalPrefix}${escapeHtml(f.name)}</span><span>${f.kills} élim. · ${deltaLabel} médailles</span>`;
       list.appendChild(li);
     });
 
@@ -1427,7 +1540,7 @@ const Match = (()=>{
     const note = document.querySelector('#screen-endmatch .end-note');
     if (note){
       const deltaLabel = playerDelta > 0 ? `+${playerDelta}` : `${playerDelta}`;
-      note.textContent = `${deltaLabel} pts — total : ${APP.points} pts. Retour au lobby…`;
+      note.textContent = `${deltaLabel} médailles — total : ${APP.points} médailles. Retour au lobby…`;
     }
 
     showScreen('screen-endmatch');

@@ -115,11 +115,51 @@ html,body{
   font-size:.85rem; color:var(--gold-soft);
 }
 .player-points{
-  display:inline-block;
+  display:inline-block; cursor:pointer;
   background:rgba(19,26,35,.85); border:1px solid var(--panel-border);
   padding:.3rem .8rem; border-radius:99px; font-family:var(--font-display);
   font-size:.8rem; color:var(--teal);
 }
+
+/* ============ SAISON / MEDAILLES ============ */
+.season-timer-wrap{ text-align:center; margin-bottom:1rem; }
+.season-timer{
+  font-family:var(--font-display); font-size:1.6rem; color:var(--gold-soft);
+  background:#0d1420; border:1px solid var(--panel-border); border-radius:10px;
+  padding:.5rem; margin-top:.4rem;
+}
+.season-board-wrap{
+  position:relative; border-radius:12px; overflow:hidden;
+  border:1px solid var(--panel-border); margin-bottom:1rem;
+  max-height:280px; overflow-y:auto;
+}
+.fire-bg{
+  position:absolute; inset:-10% -10% -30% -10%; z-index:0;
+  background:
+    radial-gradient(circle at 20% 120%, rgba(255,140,0,.55), transparent 55%),
+    radial-gradient(circle at 55% 130%, rgba(255,60,0,.65), transparent 60%),
+    radial-gradient(circle at 85% 120%, rgba(255,180,40,.5), transparent 55%),
+    linear-gradient(0deg, #2a0700 0%, transparent 70%);
+  filter: blur(6px);
+  animation: fire-flicker 2.4s ease-in-out infinite alternate;
+}
+@keyframes fire-flicker{
+  0%{ opacity:.7; transform:translateY(0) scale(1); }
+  50%{ opacity:1; transform:translateY(-4px) scale(1.03); }
+  100%{ opacity:.8; transform:translateY(2px) scale(.99); }
+}
+.season-leaderboard{
+  position:relative; z-index:1;
+  list-style:none; display:flex; flex-direction:column; gap:.4rem;
+  padding:.7rem;
+}
+.season-leaderboard li{
+  display:flex; justify-content:space-between; align-items:center;
+  background:rgba(10,14,20,.72); border:1px solid var(--panel-border);
+  border-radius:8px; padding:.5rem .8rem; font-size:.88rem; backdrop-filter:blur(2px);
+}
+.season-leaderboard li.me{ color:var(--gold-soft); font-weight:700; border-color:var(--gold); }
+.season-leaderboard .rank{ color:var(--text-dim); margin-right:.4rem; }
 
 .play-btn{
   font-family:var(--font-display); font-weight:700; font-size:1.4rem;
@@ -292,6 +332,29 @@ html,body{
   box-shadow:0 0 16px rgba(255,92,104,.55);
 }
 .attack-btn svg{ width:34px; height:34px; fill:#2a0508; }
+
+.match-equipment-btn{
+  position:absolute; right:calc(env(safe-area-inset-right,0px) + 27px);
+  bottom:calc(env(safe-area-inset-bottom,0px) + 118px);
+  z-index:6;
+}
+
+.equipment-actions{
+  display:none; flex-direction:column; gap:.5rem;
+  position:absolute; right:calc(env(safe-area-inset-right,0px) + 20px);
+  bottom:calc(env(safe-area-inset-bottom,0px) + 190px);
+  z-index:6;
+}
+.equipment-actions.open{ display:flex; }
+.ability-btn{
+  display:flex; align-items:center; gap:.4rem;
+  background:rgba(19,26,35,.9); border:1px solid var(--panel-border);
+  color:var(--text); padding:.5rem .75rem; border-radius:10px;
+  font-family:var(--font-display); font-weight:600; font-size:.78rem;
+  cursor:pointer; backdrop-filter:blur(6px);
+}
+.ability-btn span{ font-size:1.05rem; }
+.ability-btn.used{ opacity:.35; pointer-events:none; }
 
 .respawn-overlay{
   position:absolute; inset:0; z-index:8; display:none;
