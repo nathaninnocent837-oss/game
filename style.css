@@ -94,7 +94,7 @@ html,body{
 .hud-top-right{ right:14px; }
 .hud-bottom-left{ position:absolute; left:14px; bottom:calc(env(safe-area-inset-bottom,0px) + 14px); display:flex; gap:.6rem; z-index:5; }
 .hud-bottom-right{ position:absolute; right:calc(env(safe-area-inset-right,0px) + 18px); bottom:calc(env(safe-area-inset-bottom,0px) + 18px); z-index:5; }
-.hud-top-center{ position:absolute; top:calc(env(safe-area-inset-top,0px) + 16px); left:50%; transform:translateX(-50%); z-index:5; }
+.hud-top-center{ position:absolute; top:calc(env(safe-area-inset-top,0px) + 16px); left:50%; transform:translateX(-50%); z-index:5; display:flex; flex-direction:column; align-items:center; gap:.35rem; }
 
 .icon-btn{
   display:flex; align-items:center; gap:.4rem;
@@ -113,6 +113,12 @@ html,body{
   background:rgba(19,26,35,.85); border:1px solid var(--panel-border);
   padding:.4rem .9rem; border-radius:99px; font-family:var(--font-display);
   font-size:.85rem; color:var(--gold-soft);
+}
+.player-points{
+  display:inline-block;
+  background:rgba(19,26,35,.85); border:1px solid var(--panel-border);
+  padding:.3rem .8rem; border-radius:99px; font-family:var(--font-display);
+  font-size:.8rem; color:var(--teal);
 }
 
 .play-btn{
@@ -200,6 +206,31 @@ html,body{
 /* ============ MATCH ============ */
 #screen-match{ background:#000; }
 #match-canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+/* ============ MODE ADRENALINE ============ */
+.adrenaline-overlay{
+  position:absolute; inset:0; z-index:4; pointer-events:none;
+  background:radial-gradient(circle at 50% 55%, rgba(120,0,10,0) 30%, rgba(6,0,2,.88) 100%);
+  opacity:0; transition:opacity .6s ease;
+}
+.adrenaline-overlay.show{ opacity:1; }
+
+.adrenaline-banner{
+  position:absolute; top:34%; left:50%; transform:translate(-50%,-50%) scale(.8);
+  z-index:9; text-align:center; pointer-events:none;
+  font-family:var(--font-display); font-weight:700; letter-spacing:.12em;
+  font-size:clamp(1.6rem, 6vw, 2.4rem); color:var(--coral);
+  text-shadow:0 0 18px rgba(255,92,104,.9), 0 0 40px rgba(255,92,104,.5);
+  opacity:0; transition:opacity .3s ease, transform .3s ease;
+}
+.adrenaline-banner.show{
+  opacity:1; transform:translate(-50%,-50%) scale(1);
+  animation:adrenaline-pulse .6s ease-in-out infinite alternate;
+}
+@keyframes adrenaline-pulse{
+  0%{ text-shadow:0 0 18px rgba(255,92,104,.9), 0 0 40px rgba(255,92,104,.5); }
+  100%{ text-shadow:0 0 30px rgba(255,30,40,1), 0 0 70px rgba(255,30,40,.8); }
+}
 
 .match-top-center{
   position:absolute; top:calc(env(safe-area-inset-top,0px) + 10px); left:50%; transform:translateX(-50%);

@@ -9,6 +9,17 @@ const SWORD_COLORS  = ['#d9dde3', '#ffb648', '#45d6c4', '#ff5c68', '#9b9b9b'];
 const BOT_NAMES = ['Raven','Nyx','Kato','Vex','Juno','Milo','Zed','Ash','Ika','Bram','Orin','Suki'];
 
 /* ---------------------------------------------------------
+   MEDAILLES / POINTS DE CLASSEMENT
+--------------------------------------------------------- */
+const RANK_POINTS = [12, 9, 6, 4, 1, -3, -6, -8, -10, -12]; // top1 -> top10
+function pointsForRank(rank){
+  return (rank >= 1 && rank <= RANK_POINTS.length) ? RANK_POINTS[rank - 1] : 0;
+}
+function medalForRank(rank){
+  return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
+}
+
+/* ---------------------------------------------------------
    ETAT PERSISTANT (localStorage)
 --------------------------------------------------------- */
 const Store = {
@@ -30,6 +41,7 @@ const APP = {
   friends: Store.load('trugo_friends', []),
   teamCode: Store.load('trugo_teamcode', null),
   equipment: Store.load('trugo_equipment', ['ice', 'fog', 'heal']),
+  points: Store.load('trugo_points', 0),
 };
 
 const EQUIPMENT_NAMES = {
@@ -37,6 +49,210 @@ const EQUIPMENT_NAMES = {
   fog: 'Brouillard',
   heal: 'Soin',
 };
+
+/* ---------------------------------------------------------
+   AUDIO — cloche d'élimination + musique du mode adrénaline
+   (tout est synthétisé via Web Audio, aucun fichier son requis)
+--------------------------------------------------------- */
+const AudioEngine = (()=>{
+  let ctx = null;
+  let adrenalineTimer = null;
+  let adrenalineMaster = null;
+  let combatTimer = null;
+  let combatMaster = null;
+  let combatPlaying = false;
+
+  function ensureCtx(){
+    if (!ctx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      ctx = new AC();
+    }
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+
+  function unlock(){ ensureCtx(); }
+
+  function playBell(){
+    const c = ensureCtx();
+    if (!c) return;
+    const now = c.currentTime;
+    const partials = [1, 2.01, 3.2, 4.35]; // ratios inharmoniques typiques d'une cloche
+    const base = 520;
+    const master = c.createGain();
+    master.gain.setValueAtTime(0.0001, now);
+    master.gain.exponentialRampToValueAtTime(0.5, now + 0.008);
+    master.gain.exponentialRampToValueAtTime(0.0001, now + 1.8);
+    master.connect(c.destination);
+    partials.forEach((ratio, i)=>{
+      const osc = c.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = base * ratio;
+      const g = c.createGain();
+      g.gain.value = 1 / (i + 1.4);
+      osc.connect(g);
+      g.connect(master);
+      osc.start(now);
+      osc.stop(now + 1.9);
+    });
+  }
+
+  function playChurchBell(){
+    const c = ensureCtx();
+    if (!c) return;
+    const tollCount = 3;
+    const partials = [1, 2.0, 2.4, 3.0, 4.1]; // timbre plus grave et plus riche qu'une cloche simple
+    const base = 220;
+    for (let i=0;i<tollCount;i++){
+      const start = c.currentTime + i*0.95;
+      const master = c.createGain();
+      master.gain.setValueAtTime(0.0001, start);
+      master.gain.exponentialRampToValueAtTime(0.6, start + 0.015);
+      master.gain.exponentialRampToValueAtTime(0.0001, start + 3.2);
+      master.connect(c.destination);
+      partials.forEach((ratio, idx)=>{
+        const osc = c.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = base * ratio;
+        const g = c.createGain();
+        g.gain.value = 1 / (idx + 1.6);
+        osc.connect(g);
+        g.connect(master);
+        osc.start(start);
+        osc.stop(start + 3.3);
+      });
+    }
+  }
+
+  function speak(text, opts = {}){
+    if (!('speechSynthesis' in window)) return;
+    try{
+      if (opts.priority) window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = opts.lang || 'en-US';
+      utter.rate = opts.rate || 1;
+      utter.pitch = opts.pitch || 1;
+      utter.volume = opts.volume != null ? opts.volume : 1;
+      window.speechSynthesis.speak(utter);
+    }catch(e){}
+  }
+
+  function startCombatMusic(){
+    const c = ensureCtx();
+    if (!c) return;
+    stopCombatMusic();
+    combatPlaying = true;
+    const master = c.createGain();
+    master.gain.value = 0.16;
+    master.connect(c.destination);
+    combatMaster = master;
+
+    const bassNotes = [55, 55, 61.74, 49]; // motif grave discret en boucle
+    const leadNotes = [220, 261.63, 246.94, 196.0, 220, 174.61, 196.0, 220];
+    let step = 0;
+
+    function scheduleStep(){
+      if (!combatPlaying) return;
+      const t = c.currentTime;
+
+      const bass = c.createOscillator();
+      bass.type = 'triangle';
+      bass.frequency.value = bassNotes[step % bassNotes.length];
+      const bg = c.createGain();
+      bg.gain.setValueAtTime(0.0001, t);
+      bg.gain.exponentialRampToValueAtTime(0.35, t + 0.03);
+      bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+      bass.connect(bg); bg.connect(master);
+      bass.start(t); bass.stop(t + 0.45);
+
+      if (step % 2 === 0){
+        const lead = c.createOscillator();
+        lead.type = 'sine';
+        lead.frequency.value = leadNotes[(step/2) % leadNotes.length];
+        const lg = c.createGain();
+        lg.gain.setValueAtTime(0.0001, t);
+        lg.gain.exponentialRampToValueAtTime(0.1, t + 0.05);
+        lg.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+        lead.connect(lg); lg.connect(master);
+        lead.start(t); lead.stop(t + 0.55);
+      }
+
+      step++;
+      combatTimer = setTimeout(scheduleStep, 420);
+    }
+    scheduleStep();
+  }
+
+  function stopCombatMusic(){
+    combatPlaying = false;
+    clearTimeout(combatTimer);
+    combatTimer = null;
+    if (combatMaster){ try{ combatMaster.disconnect(); }catch(e){} }
+    combatMaster = null;
+  }
+
+  function startAdrenalineMusic(durationSec){
+    const c = ensureCtx();
+    if (!c) return;
+    stopAdrenalineMusic();
+    const master = c.createGain();
+    master.gain.value = 0.3;
+    master.connect(c.destination);
+    adrenalineMaster = master;
+
+    let beat = 0;
+    const totalBeats = Math.floor(durationSec * 2.4);
+    function scheduleBeat(){
+      if (beat >= totalBeats || !adrenalineMaster) return;
+      const progress = beat / totalBeats;
+      const t = c.currentTime;
+
+      // pulsation grave façon battement de coeur, de plus en plus rapide
+      const osc = c.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(58 + progress * 42, t);
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.55, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      osc.connect(g); g.connect(master);
+      osc.start(t); osc.stop(t + 0.2);
+
+      // sirène montante en fond, une pulsation sur quatre
+      if (beat % 4 === 0){
+        const siren = c.createOscillator();
+        siren.type = 'sawtooth';
+        siren.frequency.setValueAtTime(170 + progress * 260, t);
+        siren.frequency.linearRampToValueAtTime(130 + progress * 260, t + 0.35);
+        const sg = c.createGain();
+        sg.gain.setValueAtTime(0.0001, t);
+        sg.gain.exponentialRampToValueAtTime(0.07, t + 0.05);
+        sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+        siren.connect(sg); sg.connect(master);
+        siren.start(t); siren.stop(t + 0.45);
+      }
+
+      beat++;
+      const interval = Math.max(90, 260 - progress * 170); // le tempo accélère avec le temps
+      adrenalineTimer = setTimeout(scheduleBeat, interval);
+    }
+    scheduleBeat();
+  }
+
+  function stopAdrenalineMusic(){
+    clearTimeout(adrenalineTimer);
+    adrenalineTimer = null;
+    if (adrenalineMaster){ try{ adrenalineMaster.disconnect(); }catch(e){} }
+    adrenalineMaster = null;
+  }
+
+  return {
+    unlock, playBell, playChurchBell, speak,
+    startCombatMusic, stopCombatMusic,
+    startAdrenalineMusic, stopAdrenalineMusic
+  };
+})();
 
 /* ---------------------------------------------------------
    NAVIGATION ENTRE ECRANS
@@ -85,6 +301,7 @@ function runLoadingSequence(){
 --------------------------------------------------------- */
 document.getElementById('login-form').addEventListener('submit', (e)=>{
   e.preventDefault();
+  AudioEngine.unlock();
   const name = document.getElementById('login-name').value.trim();
   const pass = document.getElementById('login-pass').value;
   if (!name || !pass) return;
@@ -98,6 +315,11 @@ function enterLobby(){
   document.getElementById('lobby-username').textContent = APP.username;
   showScreen('screen-lobby');
   Lobby.start();
+}
+
+function updateLobbyPointsUI(){
+  const el = document.getElementById('lobby-points');
+  if (el) el.textContent = `🏆 ${APP.points} pts`;
 }
 
 /* ---------------------------------------------------------
@@ -251,26 +473,57 @@ document.getElementById('btn-join-code').addEventListener('click', ()=>{
 const Lobby = (()=>{
   let renderer, scene, camera, character, clock;
   let running = false;
-  let bodyMesh, swordMesh;
+  let bodyMesh, swordMesh, capeMesh, shoulderLMesh, shoulderRMesh;
 
   function buildCharacter(){
     const group = new THREE.Group();
 
     const bodyGeo = THREE.CapsuleGeometry ? new THREE.CapsuleGeometry(0.45, 0.9, 4, 8) : new THREE.CylinderGeometry(0.45,0.45,1.3,10);
-    bodyMesh = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: APP.outfitColor }));
+    bodyMesh = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: APP.outfitColor, roughness:0.55, metalness:0.15 }));
     bodyMesh.position.y = 1.0;
     group.add(bodyMesh);
 
     const headMesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.32, 16, 16),
-      new THREE.MeshStandardMaterial({ color: '#f1c39a' })
+      new THREE.MeshStandardMaterial({ color: '#f1c39a', roughness:0.6 })
     );
     headMesh.position.y = 1.85;
     group.add(headMesh);
 
+    // yeux
+    const eyeMat = new THREE.MeshStandardMaterial({ color:'#1a1410', roughness:0.4 });
+    const eyeGeo = new THREE.SphereGeometry(0.045, 8, 8);
+    const eyeL = new THREE.Mesh(eyeGeo, eyeMat); eyeL.position.set(-0.12, 1.88, 0.28); group.add(eyeL);
+    const eyeR = new THREE.Mesh(eyeGeo, eyeMat.clone()); eyeR.position.set(0.12, 1.88, 0.28); group.add(eyeR);
+
+    // épaulières
+    const shoulderGeo = new THREE.SphereGeometry(0.22, 10, 10);
+    shoulderLMesh = new THREE.Mesh(shoulderGeo, new THREE.MeshStandardMaterial({ color: APP.outfitColor, metalness:0.5, roughness:0.35 }));
+    shoulderLMesh.position.set(-0.5, 1.55, 0); group.add(shoulderLMesh);
+    shoulderRMesh = new THREE.Mesh(shoulderGeo, new THREE.MeshStandardMaterial({ color: APP.outfitColor, metalness:0.5, roughness:0.35 }));
+    shoulderRMesh.position.set(0.5, 1.55, 0); group.add(shoulderRMesh);
+
+    // ceinture
+    const beltMesh = new THREE.Mesh(
+      new THREE.TorusGeometry(0.46, 0.05, 8, 20),
+      new THREE.MeshStandardMaterial({ color:'#241705', metalness:0.3, roughness:0.6 })
+    );
+    beltMesh.rotation.x = Math.PI/2;
+    beltMesh.position.y = 0.62;
+    group.add(beltMesh);
+
+    // cape
+    capeMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.75, 1.15, 1, 4),
+      new THREE.MeshStandardMaterial({ color: new THREE.Color(APP.outfitColor).multiplyScalar(0.55), roughness:1, metalness:0, side: THREE.DoubleSide })
+    );
+    capeMesh.position.set(0, 1.05, -0.32);
+    capeMesh.rotation.x = 0.12;
+    group.add(capeMesh);
+
     swordMesh = new THREE.Mesh(
       new THREE.BoxGeometry(0.1, 1.1, 0.06),
-      new THREE.MeshStandardMaterial({ color: APP.swordColor, metalness:0.4, roughness:0.3 })
+      new THREE.MeshStandardMaterial({ color: APP.swordColor, metalness:0.6, roughness:0.2 })
     );
     swordMesh.position.set(0.55, 1.05, 0.1);
     swordMesh.rotation.z = -0.5;
@@ -290,6 +543,9 @@ const Lobby = (()=>{
   function applyCharacterColors(){
     if (bodyMesh) bodyMesh.material.color.set(APP.outfitColor);
     if (swordMesh) swordMesh.material.color.set(APP.swordColor);
+    if (shoulderLMesh) shoulderLMesh.material.color.set(APP.outfitColor);
+    if (shoulderRMesh) shoulderRMesh.material.color.set(APP.outfitColor);
+    if (capeMesh) capeMesh.material.color.set(new THREE.Color(APP.outfitColor).multiplyScalar(0.55));
   }
 
   function init(){
@@ -345,12 +601,14 @@ const Lobby = (()=>{
     character.rotation.y = Math.sin(t * 0.5) * 0.35;
     character.position.y = Math.sin(t * 2) * 0.03;
     if (swordMesh) swordMesh.rotation.z = -0.5 + Math.sin(t*2)*0.08;
+    if (capeMesh) capeMesh.rotation.x = 0.12 + Math.sin(t*2.2)*0.05;
     renderer.render(scene, camera);
   }
 
   function start(){
     if (!renderer) init();
     applyCharacterColors();
+    updateLobbyPointsUI();
     running = true;
     animate();
   }
@@ -363,6 +621,7 @@ const Lobby = (()=>{
    BOUTON JOUER -> MATCHMAKING
 --------------------------------------------------------- */
 document.getElementById('btn-play').addEventListener('click', ()=>{
+  AudioEngine.unlock();
   Lobby.stop();
   startMatchmaking();
 });
@@ -404,13 +663,17 @@ function startMatchmaking(){ Matchmaking.start(); }
    PARTIE — carte 3D, personnage 3e personne, combat, robots
 --------------------------------------------------------- */
 const MATCH_DURATION = 4*60; // secondes
-const ARENA_RADIUS = 22;
+const ARENA_RADIUS = 15; // carte de 30x30 unités (diamètre = 30)
 const MAX_HP = 750;
 const DAMAGE = 80;
 const RESPAWN_DELAY = 15;
 const ATTACK_RANGE = 1.6;
 const ATTACK_COOLDOWN = 0.6;
 const TOTAL_SLOTS = 8;
+const BASE_SPEED = 1; // vitesse de base d'un personnage : 1 unité par seconde
+const ADRENALINE_DURATION = 30; // secondes
+const ADRENALINE_MIN_DELAY = 30; // secondes avant que le mode puisse s'activer
+const ADRENALINE_END_MARGIN = 15; // secondes de marge avant la fin de la partie
 
 const Match = (()=>{
   let renderer, scene, camera, clock;
@@ -426,6 +689,16 @@ const Match = (()=>{
   let fogUntil = 0;
   let equipmentUsed = new Set();
   let effects = [];
+
+  // ---- mode adrénaline ----
+  let hemiLight, sunLight;
+  let speedMultiplier = 1;
+  let adrenalineActive = false;
+  let adrenalineTimeout = null;
+  let adrenalineEndTimeout = null;
+  let originalHemiIntensity = 1, originalSunIntensity = 1;
+  let originalFog = null, originalBackgroundHex = 0x0d1a14;
+  let lastMinuteTriggered = false;
 
   function makeHealthBar(){
     const canvas = document.createElement('canvas');
@@ -497,15 +770,16 @@ const Match = (()=>{
     scene.add(ground);
 
     obstacles = [];
+    const scale = ARENA_RADIUS / 22; // ajuste proportionnellement le décor à la taille de la carte (30x30)
 
     // anciens bâtiments (ruines)
     const buildingMat = new THREE.MeshStandardMaterial({ color:'#4a4640' });
-    const buildingCount = 9;
+    const buildingCount = 5;
     for (let i=0;i<buildingCount;i++){
       const angle = (i / buildingCount) * Math.PI * 2 + Math.random()*0.4;
-      const dist = 8 + Math.random()*10;
+      const dist = ARENA_RADIUS*0.35 + Math.random()*ARENA_RADIUS*0.45;
       const x = Math.cos(angle)*dist, z = Math.sin(angle)*dist;
-      const w = 2 + Math.random()*2.5, d = 2 + Math.random()*2.5, h = 2.5 + Math.random()*4;
+      const w = (2 + Math.random()*2.5)*scale, d = (2 + Math.random()*2.5)*scale, h = (2.5 + Math.random()*4)*scale;
       const b = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), buildingMat);
       b.position.set(x, h/2, z);
       b.rotation.y = Math.random()*Math.PI;
@@ -516,18 +790,18 @@ const Match = (()=>{
     // arbres
     const trunkMat = new THREE.MeshStandardMaterial({ color:'#3b2a1c' });
     const leafMat = new THREE.MeshStandardMaterial({ color:'#2f5c33' });
-    const treeCount = 16;
+    const treeCount = 8;
     for (let i=0;i<treeCount;i++){
       const angle = Math.random()*Math.PI*2;
       const dist = 2 + Math.random()*(ARENA_RADIUS-2);
       const x = Math.cos(angle)*dist, z = Math.sin(angle)*dist;
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.2,1.4,6), trunkMat);
-      trunk.position.set(x, 0.7, z);
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15*scale,0.2*scale,1.4*scale,6), trunkMat);
+      trunk.position.set(x, 0.7*scale, z);
       scene.add(trunk);
-      const leaves = new THREE.Mesh(new THREE.ConeGeometry(1.0,2.0,7), leafMat);
-      leaves.position.set(x, 2.2, z);
+      const leaves = new THREE.Mesh(new THREE.ConeGeometry(1.0*scale,2.0*scale,7), leafMat);
+      leaves.position.set(x, 2.2*scale, z);
       scene.add(leaves);
-      obstacles.push({ x, z, radius: 0.5 });
+      obstacles.push({ x, z, radius: 0.5*scale });
     }
 
     // limite d'arène (mur bas visuel)
@@ -543,19 +817,43 @@ const Match = (()=>{
   function buildFighterMesh(outfitColor, swordColor){
     const group = new THREE.Group();
     const bodyGeo = THREE.CapsuleGeometry ? new THREE.CapsuleGeometry(0.4, 0.85, 4, 8) : new THREE.CylinderGeometry(0.4,0.4,1.2,10);
-    const body = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: outfitColor }));
+    const body = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: outfitColor, roughness:0.55, metalness:0.15 }));
     body.position.y = 0.95;
     group.add(body);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.3,14,14), new THREE.MeshStandardMaterial({ color:'#f1c39a' }));
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.3,14,14), new THREE.MeshStandardMaterial({ color:'#f1c39a', roughness:0.6 }));
     head.position.y = 1.75;
     group.add(head);
-    const sword = new THREE.Mesh(new THREE.BoxGeometry(0.09,1.0,0.05), new THREE.MeshStandardMaterial({ color: swordColor, metalness:0.4, roughness:0.3 }));
+
+    // yeux
+    const eyeMat = new THREE.MeshStandardMaterial({ color:'#1a1410', roughness:0.4 });
+    const eyeGeo = new THREE.SphereGeometry(0.04, 8, 8);
+    const eyeL = new THREE.Mesh(eyeGeo, eyeMat); eyeL.position.set(-0.1, 1.78, 0.26); group.add(eyeL);
+    const eyeR = new THREE.Mesh(eyeGeo, eyeMat.clone()); eyeR.position.set(0.1, 1.78, 0.26); group.add(eyeR);
+
+    // épaulières
+    const shoulderGeo = new THREE.SphereGeometry(0.2, 10, 10);
+    const shoulderL = new THREE.Mesh(shoulderGeo, new THREE.MeshStandardMaterial({ color: outfitColor, metalness:0.5, roughness:0.35 }));
+    shoulderL.position.set(-0.45, 1.45, 0); group.add(shoulderL);
+    const shoulderR = new THREE.Mesh(shoulderGeo, new THREE.MeshStandardMaterial({ color: outfitColor, metalness:0.5, roughness:0.35 }));
+    shoulderR.position.set(0.45, 1.45, 0); group.add(shoulderR);
+
+    // cape
+    const cape = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.68, 1.05, 1, 4),
+      new THREE.MeshStandardMaterial({ color: new THREE.Color(outfitColor).multiplyScalar(0.55), roughness:1, metalness:0, side: THREE.DoubleSide })
+    );
+    cape.position.set(0, 0.95, -0.3);
+    cape.rotation.x = 0.1;
+    group.add(cape);
+
+    const sword = new THREE.Mesh(new THREE.BoxGeometry(0.09,1.0,0.05), new THREE.MeshStandardMaterial({ color: swordColor, metalness:0.6, roughness:0.2 }));
     sword.position.set(0.5, 1.0, 0.1);
     sword.rotation.z = -0.4;
     group.add(sword);
     const healthBar = makeHealthBar();
     group.add(healthBar);
-    return { group, sword, healthBar };
+    return { group, sword, healthBar, cape };
   }
 
   function randomSpawnPos(){
@@ -586,6 +884,7 @@ const Match = (()=>{
       id:'player', name: APP.username, isPlayer:true, isBot:false,
       hp: MAX_HP, kills:0, alive:true,
       pos: playerPos, rotY:0, mesh: playerMeshData.group, sword: playerMeshData.sword, healthBar: playerMeshData.healthBar,
+      cape: playerMeshData.cape, capePhase: Math.random()*10,
       attackCooldown:0, respawnAt:0
     });
     updateHealthBar(fighters[0]);
@@ -605,6 +904,7 @@ const Match = (()=>{
         id:'bot'+i, name, isPlayer:false, isBot:true,
         hp: MAX_HP, kills:0, alive:true,
         pos, rotY: Math.random()*Math.PI*2, mesh: meshData.group, sword: meshData.sword, healthBar: meshData.healthBar,
+        cape: meshData.cape, capePhase: Math.random()*10,
         attackCooldown: Math.random()*ATTACK_COOLDOWN, respawnAt:0,
         wanderAngle: Math.random()*Math.PI*2, wanderTimer: Math.random()*3
       });
@@ -622,11 +922,13 @@ const Match = (()=>{
 
     camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 200);
 
-    const hemi = new THREE.HemisphereLight('#bcd4ff', '#182010', 0.7);
-    scene.add(hemi);
-    const sun = new THREE.DirectionalLight('#ffe6bd', 1.0);
-    sun.position.set(10, 16, 6);
-    scene.add(sun);
+    hemiLight = new THREE.HemisphereLight('#bcd4ff', '#182010', 0.7);
+    scene.add(hemiLight);
+    sunLight = new THREE.DirectionalLight('#ffe6bd', 1.0);
+    sunLight.position.set(10, 16, 6);
+    scene.add(sunLight);
+    originalHemiIntensity = hemiLight.intensity;
+    originalSunIntensity = sunLight.intensity;
 
     buildArena();
     clock = new THREE.Clock();
@@ -745,10 +1047,13 @@ const Match = (()=>{
       const moveX = joystickVec.x, moveZ = joystickVec.y;
       const mag = Math.hypot(moveX, moveZ);
       if (mag > 0.12){
-        const camAngle = Math.atan2(camDirX, camDirZ);
-        const worldX = moveX*Math.cos(camAngle) + moveZ*Math.sin(camAngle);
-        const worldZ = -moveX*Math.sin(camAngle) + moveZ*Math.cos(camAngle);
-        const speed = 4.2;
+        // "haut" (moveZ négatif) = tout droit devant le personnage (direction de la caméra),
+        // "droite" (moveX positif) = strafe vers la droite du personnage.
+        const moveForward = -moveZ;
+        const moveRight = moveX;
+        const worldX = camDirX*moveForward + camDirZ*moveRight;
+        const worldZ = camDirZ*moveForward - camDirX*moveRight;
+        const speed = BASE_SPEED * speedMultiplier;
         tryMove(f, worldX*speed*dt, worldZ*speed*dt);
         f.rotY = Math.atan2(worldX, worldZ);
       }
@@ -762,6 +1067,7 @@ const Match = (()=>{
 
     f.mesh.position.set(f.pos.x, 0, f.pos.z);
     f.mesh.rotation.y = f.rotY;
+    if (f.cape) f.cape.rotation.x = 0.1 + Math.sin(performance.now()*0.004 + (f.capePhase||0)) * 0.05;
   }
 
   function tryMove(f, dx, dz){
@@ -780,10 +1086,11 @@ const Match = (()=>{
   }
 
   function updateBotAI(f, dt){
+    const wanderSpeed = BASE_SPEED * speedMultiplier;
     if (performance.now() < fogUntil){
       f.wanderTimer -= dt;
       if (f.wanderTimer <= 0){ f.wanderAngle = Math.random()*Math.PI*2; f.wanderTimer = 1+Math.random()*2; }
-      tryMove(f, Math.sin(f.wanderAngle)*1.2*dt, Math.cos(f.wanderAngle)*1.2*dt);
+      tryMove(f, Math.sin(f.wanderAngle)*wanderSpeed*dt, Math.cos(f.wanderAngle)*wanderSpeed*dt);
       f.rotY = f.wanderAngle;
       return;
     }
@@ -794,7 +1101,7 @@ const Match = (()=>{
       const d = dist2(f.pos.x,f.pos.z, other.pos.x, other.pos.z);
       if (d < best){ best = d; target = other; }
     }
-    const speed = 3.2;
+    const speed = BASE_SPEED * speedMultiplier;
     if (target && best < 14*14){
       const dx = target.pos.x - f.pos.x, dz = target.pos.z - f.pos.z;
       const d = Math.hypot(dx,dz) || 1;
@@ -851,6 +1158,8 @@ const Match = (()=>{
     attacker.kills += 1;
     pushElimFeed(attacker.name, target.name);
     updateLeaderboard();
+    AudioEngine.playBell();
+    AudioEngine.speak('Eliminated member');
 
     if (target.isPlayer){
       showRespawnOverlay();
@@ -864,15 +1173,99 @@ const Match = (()=>{
       if (!running) return;
       const pos = randomSpawnPos();
       f.pos = pos;
-      f.hp = MAX_HP;
+      f.hp = adrenalineActive ? 1 : MAX_HP;
       f.alive = true;
       f.mesh.visible = true;
       updateHealthBar(f);
+      setAdrenalineTint(f, adrenalineActive);
       if (f.isPlayer){
         updateHpUI(f.hp);
         hideRespawnOverlay();
       }
     }, RESPAWN_DELAY*1000);
+  }
+
+  function setAdrenalineTint(f, on){
+    if (!f.mesh) return;
+    f.mesh.traverse(obj=>{
+      if (obj.isMesh && obj.material && obj.material.emissive){
+        if (on){
+          obj.userData._prevEmissive = obj.material.emissive.getHex();
+          obj.material.emissive.setHex(0x4a0000);
+          obj.material.emissiveIntensity = 0.7;
+        } else {
+          obj.material.emissive.setHex(obj.userData._prevEmissive || 0x000000);
+          obj.material.emissiveIntensity = 1;
+        }
+      }
+    });
+  }
+
+  function scheduleAdrenaline(){
+    clearTimeout(adrenalineTimeout);
+    const remaining = MATCH_DURATION - ADRENALINE_MIN_DELAY - ADRENALINE_DURATION - ADRENALINE_END_MARGIN;
+    if (remaining <= 0) return;
+    const delay = ADRENALINE_MIN_DELAY + Math.random()*remaining;
+    adrenalineTimeout = setTimeout(triggerAdrenaline, delay*1000);
+  }
+
+  function triggerAdrenaline(){
+    if (!running || adrenalineActive) return;
+    adrenalineActive = true;
+    speedMultiplier = 2;
+
+    hemiLight.intensity = 0.15;
+    sunLight.intensity = 0.2;
+    originalFog = { color: scene.fog.color.getHex(), near: scene.fog.near, far: scene.fog.far };
+    scene.fog.color.setHex(0x1a0304);
+    scene.fog.near = 4;
+    scene.fog.far = 16;
+    scene.background.setHex(0x120305);
+
+    for (const f of fighters){
+      if (!f.alive) continue;
+      f.hp = 1;
+      updateHealthBar(f);
+      if (f.isPlayer) updateHpUI(1);
+      setAdrenalineTint(f, true);
+    }
+
+    document.getElementById('adrenaline-overlay').classList.add('show');
+    document.getElementById('adrenaline-banner').classList.add('show');
+    setMatchStatus('MODE ADRÉNALINE — 1 PV, vitesse doublée !', ADRENALINE_DURATION*1000);
+    AudioEngine.stopCombatMusic();
+    AudioEngine.speak('Adrenaline mode', { priority:true, pitch:1.1 });
+    AudioEngine.startAdrenalineMusic(ADRENALINE_DURATION);
+
+    adrenalineEndTimeout = setTimeout(endAdrenaline, ADRENALINE_DURATION*1000);
+  }
+
+  function endAdrenaline(){
+    if (!adrenalineActive) return;
+    adrenalineActive = false;
+    speedMultiplier = 1;
+
+    hemiLight.intensity = originalHemiIntensity;
+    sunLight.intensity = originalSunIntensity;
+    if (originalFog){
+      scene.fog.color.setHex(originalFog.color);
+      scene.fog.near = originalFog.near;
+      scene.fog.far = originalFog.far;
+    }
+    scene.background.setHex(originalBackgroundHex);
+
+    for (const f of fighters){
+      if (!f.alive) continue;
+      f.hp = MAX_HP;
+      updateHealthBar(f);
+      if (f.isPlayer) updateHpUI(f.hp);
+      setAdrenalineTint(f, false);
+    }
+
+    document.getElementById('adrenaline-overlay').classList.remove('show');
+    document.getElementById('adrenaline-banner').classList.remove('show');
+    AudioEngine.stopAdrenalineMusic();
+    if (running) AudioEngine.startCombatMusic();
   }
 
   function updateHpUI(hp){
@@ -951,10 +1344,17 @@ const Match = (()=>{
 
   function startTimer(){
     timeLeft = MATCH_DURATION;
+    lastMinuteTriggered = false;
     document.getElementById('match-timer').textContent = formatTime(timeLeft);
     matchTimerInterval = setInterval(()=>{
       timeLeft -= 1;
       document.getElementById('match-timer').textContent = formatTime(timeLeft);
+      if (!lastMinuteTriggered && timeLeft === 60){
+        lastMinuteTriggered = true;
+        AudioEngine.playChurchBell();
+        AudioEngine.speak('Last minute', { priority:true, rate:0.9, pitch:0.85 });
+        setMatchStatus('Dernière minute !', 4000);
+      }
       if (timeLeft <= 0){
         clearInterval(matchTimerInterval);
         endMatch();
@@ -971,6 +1371,18 @@ const Match = (()=>{
     document.getElementById('elim-feed').innerHTML = '';
     hideRespawnOverlay();
     setupJoystickOnce();
+    AudioEngine.unlock();
+
+    // réinitialise l'état du mode adrénaline pour cette nouvelle partie
+    clearTimeout(adrenalineTimeout);
+    clearTimeout(adrenalineEndTimeout);
+    adrenalineActive = false;
+    speedMultiplier = 1;
+    document.getElementById('adrenaline-overlay').classList.remove('show');
+    document.getElementById('adrenaline-banner').classList.remove('show');
+    scheduleAdrenaline();
+    AudioEngine.startCombatMusic();
+
     running = true;
     clock.start();
     startTimer();
@@ -987,16 +1399,37 @@ const Match = (()=>{
   function endMatch(){
     running = false;
     clearInterval(matchTimerInterval);
+    clearTimeout(adrenalineTimeout);
+    clearTimeout(adrenalineEndTimeout);
+    if (adrenalineActive) endAdrenaline();
     hideRespawnOverlay();
+    AudioEngine.stopCombatMusic();
+
     const sorted = [...fighters].sort((a,b)=>b.kills-a.kills);
     const list = document.getElementById('end-leaderboard');
     list.innerHTML = '';
+    let playerDelta = 0;
     sorted.forEach((f,i)=>{
+      const rank = i + 1;
+      const delta = pointsForRank(rank);
+      if (f.isPlayer) playerDelta = delta;
       const li = document.createElement('li');
       if (f.isPlayer) li.className = 'me';
-      li.innerHTML = `<span>#${i+1} ${escapeHtml(f.name)}</span><span>${f.kills} élim.</span>`;
+      const medal = medalForRank(rank);
+      const medalPrefix = medal ? medal + ' ' : '';
+      const deltaLabel = delta > 0 ? `+${delta}` : `${delta}`;
+      li.innerHTML = `<span>#${rank} ${medalPrefix}${escapeHtml(f.name)}</span><span>${f.kills} élim. · ${deltaLabel} pts</span>`;
       list.appendChild(li);
     });
+
+    APP.points = Math.max(0, APP.points + playerDelta);
+    Store.save('trugo_points', APP.points);
+    const note = document.querySelector('#screen-endmatch .end-note');
+    if (note){
+      const deltaLabel = playerDelta > 0 ? `+${playerDelta}` : `${playerDelta}`;
+      note.textContent = `${deltaLabel} pts — total : ${APP.points} pts. Retour au lobby…`;
+    }
+
     showScreen('screen-endmatch');
     setTimeout(()=>{
       showScreen('screen-lobby');
