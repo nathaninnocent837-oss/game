@@ -190,6 +190,21 @@
   </div>
 </section>
 
+<!-- ===================== ECRAN ROULETTE DE MODE ===================== -->
+<section id="screen-roulette" class="screen">
+  <div class="roulette-wrap">
+    <h2 class="roulette-title">Sélection du mode…</h2>
+    <div class="roulette-wheel-frame">
+      <div class="roulette-pointer">▼</div>
+      <div class="roulette-wheel" id="roulette-wheel">
+        <span class="roulette-half roulette-half-a">FRAPPE<br>DOLLING</span>
+        <span class="roulette-half roulette-half-b">COURONNE<br>HUNTER</span>
+      </div>
+    </div>
+    <p class="roulette-result" id="roulette-result"></p>
+  </div>
+</section>
+
 <!-- ===================== ECRAN DE PARTIE ===================== -->
 <section id="screen-match" class="screen">
   <canvas id="match-canvas"></canvas>
@@ -200,12 +215,28 @@
   <div class="match-top-center">
     <div class="match-timer" id="match-timer">4:00</div>
     <div class="elim-feed" id="elim-feed"></div>
+    <div class="crown-hud" id="crown-hud">
+      <div class="crown-hp-wrap" id="crown-hp-wrap">
+        <span class="crown-hp-label">👑 Couronne</span>
+        <div class="crown-hp-bar"><div class="crown-hp-fill" id="crown-hp-fill"></div></div>
+      </div>
+      <div class="crown-hold-wrap" id="crown-hold-wrap">
+        <span id="crown-hold-owner"></span>
+        <div class="crown-hold-timer" id="crown-hold-timer">10</div>
+      </div>
+    </div>
   </div>
 
   <div class="match-top-left">
     <div class="leaderboard" id="leaderboard">
-      <h4>Classement</h4>
-      <ol id="leaderboard-list"></ol>
+      <div class="leaderboard-yourank" id="leaderboard-yourank">
+        <span class="yourank-label">Toi</span>
+        <span class="yourank-value" id="yourank-value">#-</span>
+      </div>
+      <div class="leaderboard-body">
+        <h4>Classement</h4>
+        <ol id="leaderboard-list"></ol>
+      </div>
     </div>
   </div>
 
