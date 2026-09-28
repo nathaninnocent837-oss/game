@@ -93,7 +93,7 @@ html,body{
 .hud-top-left{ left:14px; }
 .hud-top-right{ right:14px; }
 .hud-bottom-left{ position:absolute; left:14px; bottom:calc(env(safe-area-inset-bottom,0px) + 14px); display:flex; gap:.6rem; z-index:5; }
-.hud-bottom-right{ position:absolute; right:calc(env(safe-area-inset-right,0px) + 18px); bottom:calc(env(safe-area-inset-bottom,0px) + 18px); z-index:5; }
+.hud-bottom-right{ display:flex; align-items:flex-end; gap:.8rem; position:absolute; right:calc(env(safe-area-inset-right,0px) + 18px); bottom:calc(env(safe-area-inset-bottom,0px) + 18px); z-index:5; }
 .hud-top-center{ position:absolute; top:calc(env(safe-area-inset-top,0px) + 16px); left:50%; transform:translateX(-50%); z-index:5; display:flex; flex-direction:column; align-items:center; gap:.35rem; }
 
 .icon-btn{
@@ -110,6 +110,7 @@ html,body{
 .icon-btn.disabled svg{ stroke:var(--text-dim); }
 
 .player-tag{
+  cursor:pointer;
   background:rgba(19,26,35,.85); border:1px solid var(--panel-border);
   padding:.4rem .9rem; border-radius:99px; font-family:var(--font-display);
   font-size:.85rem; color:var(--gold-soft);
@@ -382,6 +383,21 @@ html,body{
 }
 .attack-btn svg{ width:34px; height:34px; fill:#2a0508; }
 
+.sprint-btn{
+  position:absolute; right:calc(env(safe-area-inset-right,0px) + 116px);
+  bottom:calc(env(safe-area-inset-bottom,0px) + 30px);
+  width:62px; height:62px; border-radius:50%; z-index:6;
+  background:rgba(19,26,35,.85); border:2px solid var(--panel-border); cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  -webkit-tap-highlight-color:transparent;
+}
+.sprint-btn svg{ width:30px; height:30px; fill:var(--text); }
+.sprint-btn.active{
+  background:rgba(69,214,196,.9); border-color:#45d6c4;
+  box-shadow:0 0 16px rgba(69,214,196,.7);
+}
+.sprint-btn.active svg{ fill:#06231f; }
+
 .match-equipment-btn{
   position:absolute; right:calc(env(safe-area-inset-right,0px) + 27px);
   bottom:calc(env(safe-area-inset-bottom,0px) + 118px);
@@ -449,3 +465,40 @@ html,body{
 @media (orientation:portrait) and (pointer:coarse){
   #orientation-lock{ display:flex; }
 }
+
+/* ============ COUPES / PROFIL ============ */
+.cup-btn{
+  display:flex; align-items:center; gap:.45rem;
+  font-family:var(--font-display); font-weight:700; font-size:1rem; color:var(--gold-soft);
+  background:rgba(19,26,35,.9); border:1px solid var(--gold); border-radius:14px;
+  padding:.8rem 1.1rem; cursor:pointer;
+}
+.cup-icon{ font-size:1.2rem; }
+.cup-hero{ text-align:center; margin-bottom:1rem; }
+.cup-hero-icon{ font-size:3rem; }
+.cup-hero-title{ font-family:var(--font-display); font-size:1.7rem; font-weight:700; color:var(--gold-soft); }
+.cup-bar{ height:16px; border-radius:99px; background:#0d1420; border:1px solid var(--panel-border); overflow:hidden; }
+.cup-bar-fill{ height:100%; width:0%; background:linear-gradient(90deg,var(--teal),var(--gold)); transition:width .4s ease; }
+.cup-xp-text{ text-align:center; font-family:var(--font-display); font-size:1.1rem; margin:.5rem 0 .3rem; }
+#cup-next{ text-align:center; }
+.cup-rule{ margin-top:1rem; }
+
+.name-link{ cursor:pointer; text-decoration:underline; text-decoration-color:var(--panel-border); }
+.cup-tag{ color:var(--gold-soft); margin-left:.3rem; font-size:.72rem; }
+.friend-list button.danger{ background:#3a1a1f; color:var(--coral); }
+
+.profile-top{ display:flex; flex-direction:column; align-items:center; gap:.4rem; margin-bottom:1rem; }
+.profile-avatar{ width:110px; height:150px; }
+.avatar-svg{ width:100%; height:100%; }
+.profile-cup{
+  font-family:var(--font-display); font-weight:700; color:var(--gold-soft);
+  border:1px solid var(--gold); border-radius:99px; padding:.2rem .8rem; font-size:.9rem;
+}
+.profile-stats{ display:grid; grid-template-columns:repeat(3,1fr); gap:.5rem; margin-bottom:1rem; }
+.stat-cell{
+  display:flex; flex-direction:column; align-items:center; gap:.15rem;
+  background:#0d1420; border:1px solid var(--panel-border); border-radius:10px; padding:.55rem .3rem;
+}
+.stat-value{ font-family:var(--font-display); font-size:1.2rem; font-weight:700; color:var(--teal); }
+.stat-label{ font-size:.66rem; color:var(--text-dim); text-align:center; }
+#profile-add-friend{ width:100%; }
