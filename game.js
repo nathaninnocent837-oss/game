@@ -42,6 +42,9 @@ const APP = {
   teamCode: Store.load('trugo_teamcode', null),
   equipment: Store.load('trugo_equipment', ['ice', 'fog', 'heal']),
   points: Store.load('trugo_points', 0),
+  gold: Store.load('trugo_gold', 1500),
+  boxes: Store.load('trugo_boxes', []),
+  cupRewardClaimed: Store.load('trugo_cup_reward_claimed', 0),
 };
 
 const EQUIPMENT_NAMES = {
@@ -149,6 +152,227 @@ function avatarSvg(outfit, sword){
     <rect x="90" y="108" width="18" height="6" rx="3" fill="${dark}"/>
   </svg>`;
 }
+
+
+/* ---------------------------------------------------------
+   MAGASIN : OR + BOITES A RARETE
+--------------------------------------------------------- */
+const BOX_ATTEMPTS_TO_FINALIZE = 6;
+const COMMON_BOX_PRICE = 1000;
+const CUP_REWARD_INTERVAL = 15;
+const CUP_REWARD_BOX_COUNT = 10;
+
+const RARITIES = [
+  { key:'commun',     label:'Commun',     weight:40, coins:2000,  cls:'rarity-commun' },
+  { key:'rare',       label:'Rare',       weight:25, coins:5000,  cls:'rarity-rare' },
+  { key:'epique',     label:'Épique',     weight:15, coins:9000,  cls:'rarity-epique' },
+  { key:'colossal',   label:'Colossal',   weight:8,  coins:13000, cls:'rarity-colossal' },
+  { key:'legendaire', label:'Légendaire', weight:6,  coins:17000, cls:'rarity-legendaire' },
+  { key:'ultime',     label:'Ultime',     weight:4,  coins:21000, cls:'rarity-ultime' },
+  { key:'supreme',    label:'Suprême',    weight:2,  coins:30000, cls:'rarity-supreme' },
+];
+const RARITY_WEIGHT_TOTAL = RARITIES.reduce((s, r) => s + r.weight, 0);
+
+function rollRarityIndex(){
+  let r = Math.random() * RARITY_WEIGHT_TOTAL;
+  for (let i = 0; i < RARITIES.length; i++){
+    r -= RARITIES[i].weight;
+    if (r <= 0) return i;
+  }
+  return 0;
+}
+
+function saveGold(){ Store.save('trugo_gold', APP.gold); }
+function saveBoxes(){ Store.save('trugo_boxes', APP.boxes); }
+function addGold(n){ APP.gold = Math.max(0, APP.gold + n); saveGold(); updateLobbyGoldUI(); }
+function spendGold(n){
+  if (APP.gold < n) return false;
+  APP.gold -= n; saveGold(); updateLobbyGoldUI();
+  return true;
+}
+function addBoxes(n){
+  for (let i = 0; i < n; i++){
+    APP.boxes.push({ id: `${Date.now()}_${Math.random().toString(36).slice(2,8)}`, tier: 0, attempts: 0 });
+  }
+  saveBoxes();
+}
+
+function updateLobbyGoldUI(){
+  const el = document.getElementById('lobby-gold');
+  if (el) el.textContent = `🪙 ${APP.gold}`;
+}
+
+function availableCupReward(){
+  const cup = cupFromXp(APP.stats.xp);
+  const milestone = Math.floor(cup / CUP_REWARD_INTERVAL) * CUP_REWARD_INTERVAL;
+  return (milestone > 0 && milestone > APP.cupRewardClaimed) ? milestone : 0;
+}
+
+function renderShop(){
+  updateLobbyGoldUI();
+  document.getElementById('shop-gold-value').textContent = APP.gold;
+
+  // Offre spéciale liée aux coupes
+  const rewardEl = document.getElementById('shop-cup-reward');
+  const milestone = availableCupReward();
+  if (milestone){
+    rewardEl.style.display = '';
+    rewardEl.querySelector('.cup-reward-text').textContent =
+      `Coupe ${milestone} atteinte : 10 boîtes offertes !`;
+  } else {
+    rewardEl.style.display = 'none';
+  }
+
+  renderMyBoxes();
+}
+
+document.getElementById('shop-claim-cup-reward').addEventListener('click', ()=>{
+  const milestone = availableCupReward();
+  if (!milestone) return;
+  APP.cupRewardClaimed = milestone;
+  Store.save('trugo_cup_reward_claimed', milestone);
+  addBoxes(CUP_REWARD_BOX_COUNT);
+  renderShop();
+});
+
+document.getElementById('shop-buy-common-box').addEventListener('click', ()=>{
+  if (spendGold(COMMON_BOX_PRICE)){
+    addBoxes(1);
+    renderShop();
+  } else {
+    const btn = document.getElementById('shop-buy-common-box');
+    btn.classList.remove('shake'); void btn.offsetWidth; btn.classList.add('shake');
+  }
+});
+
+function renderMyBoxes(){
+  const wrap = document.getElementById('shop-boxes-grid');
+  wrap.innerHTML = '';
+  if (APP.boxes.length === 0){
+    wrap.innerHTML = '<p class="panel-note shop-empty">Aucune boîte pour l\'instant. Gagne-en en jouant ou achète-en une ci-dessus.</p>';
+    return;
+  }
+  APP.boxes.forEach(box => wrap.appendChild(buildBoxCard(box)));
+}
+
+function buildBoxCard(box){
+  const rarity = RARITIES[box.tier];
+  const card = document.createElement('div');
+  card.className = `box-card ${rarity.cls}`;
+  card.dataset.boxId = box.id;
+  card.innerHTML = `
+    <div class="box-icon">🎁</div>
+    <div class="box-rarity-name">${rarity.label}</div>
+    <div class="box-attempts">${box.attempts} / ${BOX_ATTEMPTS_TO_FINALIZE}</div>
+    <button class="box-action-btn">Ouvrir</button>
+  `;
+  card.querySelector('.box-action-btn').addEventListener('click', ()=> BoxOpen.open(box.id));
+  return card;
+}
+
+/* ---------------------------------------------------------
+   ECRAN PLEIN ECRAN D'OUVERTURE DE BOITE
+--------------------------------------------------------- */
+const BoxOpen = (()=>{
+  let currentBoxId = null;
+  let busy = false;
+
+  const bg = ()=> document.getElementById('boxopen-bg');
+  const icon = ()=> document.getElementById('boxopen-icon');
+  const nameEl = ()=> document.getElementById('boxopen-rarity-name');
+  const hintEl = ()=> document.getElementById('boxopen-hint');
+  const dotsEl = ()=> document.getElementById('boxopen-dots');
+
+  function renderDots(box){
+    const dots = [];
+    for (let i = 0; i < BOX_ATTEMPTS_TO_FINALIZE; i++){
+      dots.push(`<span class="boxopen-dot${i < box.attempts ? ' filled' : ''}"></span>`);
+    }
+    dotsEl().innerHTML = dots.join('');
+  }
+
+  function applyRarity(box){
+    const rarity = RARITIES[box.tier];
+    bg().className = `boxopen-bg ${rarity.cls}`;
+    icon().className = `box-icon boxopen-icon ${rarity.cls}`;
+    nameEl().textContent = rarity.label;
+    renderDots(box);
+  }
+
+  function open(boxId){
+    const box = APP.boxes.find(b => b.id === boxId);
+    if (!box) return;
+    currentBoxId = boxId;
+    busy = false;
+    closePanel('panel-shop');
+    document.getElementById('boxopen-reward-overlay').classList.remove('open');
+    document.getElementById('boxopen-box-btn').style.display = '';
+    hintEl().textContent = "Appuie sur la boîte pour tenter de l'améliorer";
+    applyRarity(box);
+    showScreen('screen-boxopen');
+  }
+
+  function tap(){
+    const box = APP.boxes.find(b => b.id === currentBoxId);
+    if (!box || busy) return;
+    busy = true;
+    AudioEngine.playClick && AudioEngine.playClick();
+    icon().classList.add('box-spinning');
+
+    setTimeout(()=>{
+      const rolled = rollRarityIndex();
+      if (rolled > box.tier) box.tier = rolled;
+      box.attempts += 1;
+      saveBoxes();
+
+      icon().classList.remove('box-spinning');
+      applyRarity(box);
+      icon().classList.add('box-pulse');
+      setTimeout(()=> icon().classList.remove('box-pulse'), 450);
+
+      if (box.attempts >= BOX_ATTEMPTS_TO_FINALIZE){
+        finalize(box);
+      } else {
+        busy = false;
+      }
+    }, 900);
+  }
+
+  function finalize(box){
+    const rarity = RARITIES[box.tier];
+    hintEl().textContent = 'Ouverture…';
+    icon().classList.add('box-opening-burst');
+
+    setTimeout(()=>{
+      document.getElementById('boxopen-box-btn').style.display = 'none';
+      addGold(rarity.coins);
+      APP.boxes = APP.boxes.filter(b => b.id !== box.id);
+      saveBoxes();
+
+      document.getElementById('boxopen-reward-rarity').textContent = rarity.label;
+      document.getElementById('boxopen-reward-rarity').className = `boxopen-reward-rarity ${rarity.cls}`;
+      document.getElementById('boxopen-reward-coins').textContent = `+${rarity.coins} 🪙`;
+      document.getElementById('boxopen-reward-overlay').classList.add('open');
+    }, 650);
+  }
+
+  function close(){
+    currentBoxId = null;
+    showScreen('screen-lobby');
+    Lobby.start();
+  }
+
+  document.getElementById('boxopen-box-btn').addEventListener('click', tap);
+  document.getElementById('btn-boxopen-close').addEventListener('click', close);
+  document.getElementById('boxopen-ok-btn').addEventListener('click', close);
+
+  return { open };
+})();
+
+document.getElementById('btn-shop').addEventListener('click', ()=>{
+  renderShop();
+  openPanel('panel-shop');
+});
 
 /* ---------------------------------------------------------
    SAISON DES MEDAILLES
@@ -542,6 +766,7 @@ function updateLobbyPointsUI(){
   if (el) el.textContent = `🏅 ${APP.points} médailles`;
   const cup = document.getElementById('btn-cup-label');
   if (cup) cup.textContent = `Coupe ${cupFromXp(APP.stats.xp)}`;
+  updateLobbyGoldUI();
 }
 
 /* ---------------------------------------------------------
@@ -629,10 +854,6 @@ document.getElementById('btn-character').addEventListener('click', ()=>{
     APP.swordColor = c; Store.save('trugo_sword', c); syncOwnProfile(); Lobby.applyCharacterColors();
   });
   openPanel('panel-character');
-});
-
-document.getElementById('btn-shop').addEventListener('click', ()=>{
-  // Bouton volontairement inactif pour l'instant.
 });
 
 document.getElementById('btn-equipment').addEventListener('click', ()=>{
@@ -2182,8 +2403,9 @@ const Match = (()=>{
     else if (outcome === 'loss') APP.stats.losses += 1;
     saveStats();
     const cupAfter = cupFromXp(APP.stats.xp);
+    addBoxes(1); // une boîte gagnée à chaque fin de partie
     if (note){
-      note.textContent = `+${xpGain} XP (${myKills} élim.)` +
+      note.textContent = `+${xpGain} XP (${myKills} élim.) · +1 boîte 🎁` +
         (cupAfter > cupBefore ? ` — Coupe ${cupAfter} atteinte !` : '') + ' · ' + note.textContent;
     }
 

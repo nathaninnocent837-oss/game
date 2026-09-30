@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 
@@ -65,7 +65,7 @@
       <svg viewBox="0 0 24 24"><path d="M12 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 12c-4.4 0-8 2.2-8 5v3h16v-3c0-2.8-3.6-5-8-5Z"/></svg>
       <span>Personnage</span>
     </button>
-    <button class="icon-btn stacked disabled" id="btn-shop" aria-label="Magasin">
+    <button class="icon-btn stacked" id="btn-shop" aria-label="Magasin">
       <svg viewBox="0 0 24 24"><path d="M4 8l1-4h14l1 4M4 8v11a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V8M4 8h16M9 12a3 3 0 0 0 6 0"/></svg>
       <span>Magasin</span>
     </button>
@@ -87,6 +87,7 @@
   <div class="hud-top-center">
     <span id="lobby-username" class="player-tag"></span>
     <span id="lobby-points" class="player-points"></span>
+    <span id="lobby-gold" class="player-gold"></span>
   </div>
 </section>
 
@@ -342,6 +343,100 @@
     <button class="btn-secondary" id="profile-add-friend">Ajouter en ami</button>
   </div>
 </div>
+
+<!-- ===================== PANNEAU MAGASIN ===================== -->
+<div id="panel-shop" class="panel">
+  <div class="panel-inner shop-panel">
+    <div class="panel-head">
+      <h2>Magasin</h2>
+      <button class="panel-close" data-close="panel-shop">&times;</button>
+    </div>
+    <div class="shop-gold-bar">
+      <span class="shop-gold-icon">🪙</span>
+      <span id="shop-gold-value">0</span>
+      <span class="shop-gold-label">Or</span>
+    </div>
+
+    <div id="shop-cup-reward" class="shop-cup-reward">
+      <div class="cup-reward-shine" aria-hidden="true"></div>
+      <span class="cup-reward-icon">🎉</span>
+      <span class="cup-reward-text">Récompense de coupe disponible !</span>
+      <button class="btn-primary" id="shop-claim-cup-reward">Récupérer</button>
+    </div>
+
+    <div class="panel-section">
+      <h3>Offres</h3>
+      <div class="offers-grid">
+        <div class="offer-card disabled">
+          <span class="offer-icon">🪙</span>
+          <span class="offer-title">Petit sac d'or</span>
+          <span class="offer-amount">+2 500 Or</span>
+          <button class="btn-secondary" disabled>Bientôt</button>
+        </div>
+        <div class="offer-card disabled">
+          <span class="offer-icon">💰</span>
+          <span class="offer-title">Sac d'or</span>
+          <span class="offer-amount">+7 000 Or</span>
+          <button class="btn-secondary" disabled>Bientôt</button>
+        </div>
+        <div class="offer-card disabled">
+          <span class="offer-icon">👑</span>
+          <span class="offer-title">Coffre d'or</span>
+          <span class="offer-amount">+20 000 Or</span>
+          <button class="btn-secondary" disabled>Bientôt</button>
+        </div>
+      </div>
+      <p class="panel-note">Ces offres arriveront bientôt. Pour l'instant, seules les boîtes sont disponibles à l'achat.</p>
+    </div>
+
+    <div class="panel-section">
+      <h3>Boîtes</h3>
+      <div class="box-buy-card">
+        <div class="box-icon box-buy-icon rarity-commun">🎁</div>
+        <div class="box-buy-info">
+          <strong>Boîte commune aléatoire</strong>
+          <small>Peut être améliorée jusqu'à Suprême</small>
+        </div>
+        <button class="btn-primary" id="shop-buy-common-box">1000 🪙</button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <h3>Mes boîtes</h3>
+      <div id="shop-boxes-grid" class="shop-boxes-grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== ECRAN OUVERTURE DE BOITE ===================== -->
+<section id="screen-boxopen" class="screen">
+  <div class="boxopen-bg rarity-commun" id="boxopen-bg"></div>
+
+  <button class="boxopen-close" id="btn-boxopen-close" aria-label="Fermer">&times;</button>
+
+  <div class="boxopen-wrap">
+    <h2 class="boxopen-rarity-name" id="boxopen-rarity-name">Commun</h2>
+
+    <div class="boxopen-stage">
+      <button class="boxopen-box-btn" id="boxopen-box-btn" aria-label="Ouvrir la boîte">
+        <div class="box-icon boxopen-icon rarity-commun" id="boxopen-icon">🎁</div>
+      </button>
+    </div>
+
+    <p class="boxopen-hint" id="boxopen-hint">Appuie sur la boîte pour tenter de l'améliorer</p>
+
+    <div class="boxopen-dots" id="boxopen-dots"></div>
+  </div>
+
+  <div class="boxopen-reward-overlay" id="boxopen-reward-overlay">
+    <div class="boxopen-reward-card">
+      <span class="boxopen-reward-icon">🎁</span>
+      <div class="boxopen-reward-rarity" id="boxopen-reward-rarity">Suprême</div>
+      <div class="boxopen-reward-coins" id="boxopen-reward-coins">+30000 🪙</div>
+      <button class="btn-primary" id="boxopen-ok-btn">OK</button>
+    </div>
+  </div>
+</section>
 
 <!-- ===================== VERROU D'ORIENTATION ===================== -->
 <div id="orientation-lock">
