@@ -11,7 +11,7 @@ const BOT_NAMES = ['Raven','Nyx','Kato','Vex','Juno','Milo','Zed','Ash','Ika','B
 /* ---------------------------------------------------------
    MEDAILLES / POINTS DE CLASSEMENT
 --------------------------------------------------------- */
-const RANK_POINTS = [13, 10, 7, 4, 1, -3, -6, -8, -10, -12]; // top1 -> top10
+const RANK_POINTS = [12, 9, 6, 4, 1, -3, -6, -8, -10, -12]; // top1 -> top10
 function pointsForRank(rank){
   return (rank >= 1 && rank <= RANK_POINTS.length) ? RANK_POINTS[rank - 1] : 0;
 }
@@ -42,337 +42,78 @@ const APP = {
   teamCode: Store.load('trugo_teamcode', null),
   equipment: Store.load('trugo_equipment', ['ice', 'fog', 'heal']),
   points: Store.load('trugo_points', 0),
-  gold: Store.load('trugo_gold', 1500),
-  boxes: Store.load('trugo_boxes', []),
-  cupRewardClaimed: Store.load('trugo_cup_reward_claimed', 0),
+  league: Store.load('trugo_league', null), // index dans LEAGUES de la dernière partie classée
 };
+
+/* ---------------------------------------------------------
+   LIGUES (mode classé) : selon le nombre d'éliminations de la partie
+--------------------------------------------------------- */
+const LEAGUES = [
+  { name:'Bronze',   color:'#cd7f32' },
+  { name:'Argent',   color:'#c9d2dc' },
+  { name:'Or',       color:'#ffc83d' },
+  { name:'Platine',  color:'#5fe3d2' },
+  { name:'Diamant',  color:'#5cc8ff' },
+  { name:'Master',   color:'#b36bff' },
+  { name:'Champion', color:'#ff5c68' },
+  { name:'Colossal', color:'#ff8a3d' },
+  { name:'Légende',  color:'#ff4fd8' },
+  { name:'Ultime',   color:'#7dff6a' },
+  { name:'Suprême',  color:'#ffffff' }
+];
+// 0-2 bronze, 3-5 argent, ... 27-29 ultime, 30+ suprême
+function leagueIndexForKills(kills){
+  return Math.min(LEAGUES.length - 1, Math.max(0, Math.floor(kills / 3)));
+}
+let pendingLeagueReveal = null; // {index, kills} annoncé au retour au lobby
+
+function updateLeagueUI(){
+  const el = document.getElementById('lobby-league');
+  if (!el) return;
+  const lg = APP.league != null ? LEAGUES[APP.league] : null;
+  if (!lg){ el.classList.remove('show'); return; }
+  el.textContent = lg.name;
+  el.style.setProperty('--league-color', lg.color);
+  el.classList.add('show');
+}
+
+// Animation de révélation : lasers qui jaillissent, puis le nom de la ligue
+function showLeagueReveal(index, kills){
+  const lg = LEAGUES[index];
+  const overlay = document.getElementById('league-reveal');
+  const field = document.getElementById('laser-field');
+  if (!lg || !overlay || !field){ APP.league = index; updateLeagueUI(); return; }
+  field.innerHTML = '';
+  const count = 16;
+  for (let i = 0; i < count; i++){
+    const laser = document.createElement('div');
+    laser.className = 'laser';
+    laser.style.setProperty('--a', `${(360 / count) * i}deg`);
+    laser.style.setProperty('--d', `${(i % 4) * 0.12}s`);
+    laser.style.setProperty('--c', i % 2 ? lg.color : '#ffffff');
+    field.appendChild(laser);
+  }
+  overlay.style.setProperty('--league-color', lg.color);
+  document.getElementById('league-reveal-name').textContent = lg.name;
+  document.getElementById('league-reveal-kills').textContent = `${kills} élimination${kills > 1 ? 's' : ''}`;
+  overlay.classList.remove('hide');
+  overlay.classList.add('show');
+  AudioEngine.playChurchBell();
+  setTimeout(()=>{
+    overlay.classList.add('hide');
+    setTimeout(()=>{
+      overlay.classList.remove('show', 'hide');
+      APP.league = index;
+      updateLeagueUI(); // le badge apparaît à côté du profil
+    }, 500);
+  }, 4200);
+}
 
 const EQUIPMENT_NAMES = {
   ice: 'Glace',
   fog: 'Brouillard',
   heal: 'Soin',
 };
-
-
-/* ---------------------------------------------------------
-   PROGRESSION (COUPES) + STATISTIQUES + ANNUAIRE LOCAL
-   Chaque élimination = 8 à 19 XP, versés en fin de partie.
-   100 XP = un palier (Coupe 1 -> Coupe 2 -> ...).
---------------------------------------------------------- */
-const XP_PER_CUP = 100;
-const XP_MIN_PER_KILL = 8;
-const XP_MAX_PER_KILL = 19;
-APP.stats = Object.assign({ xp:0, kills:0, matches:0, wins:0, losses:0 }, Store.load('trugo_stats', {}));
-
-function cupFromXp(xp){ return Math.floor(xp / XP_PER_CUP) + 1; }
-function xpForKills(n){
-  let total = 0;
-  for (let i = 0; i < n; i++){
-    total += XP_MIN_PER_KILL + Math.floor(Math.random() * (XP_MAX_PER_KILL - XP_MIN_PER_KILL + 1));
-  }
-  return total;
-}
-
-function ownProfile(){
-  return {
-    name: APP.username, xp: APP.stats.xp, kills: APP.stats.kills, matches: APP.stats.matches,
-    wins: APP.stats.wins, losses: APP.stats.losses, medals: APP.points,
-    outfit: APP.outfitColor, sword: APP.swordColor
-  };
-}
-// Enregistre le profil de ce joueur dans l'annuaire de l'appareil (pour que d'autres comptes locaux puissent le trouver).
-function syncOwnProfile(){
-  if (!APP.username) return;
-  const dir = Store.load('trugo_players', {});
-  dir[APP.username] = ownProfile();
-  Store.save('trugo_players', dir);
-}
-function saveStats(){
-  Store.save('trugo_stats', APP.stats);
-  syncOwnProfile();
-}
-
-function hashStr(s){
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
-  return h >>> 0;
-}
-function seededRng(seed){
-  return function(){
-    seed = (seed + 0x6D2B79F5) >>> 0;
-    let t = seed;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-// Profil simulé, toujours identique pour un même nom.
-function botProfile(name, medals){
-  const r = seededRng(hashStr(name));
-  const matches = 20 + Math.floor(r() * 180);
-  const wins = Math.floor(matches * (0.1 + r() * 0.35));
-  const kills = Math.floor(matches * (1 + r() * 4));
-  const xp = Math.round(kills * (XP_MIN_PER_KILL + r() * (XP_MAX_PER_KILL - XP_MIN_PER_KILL)));
-  return {
-    name, xp, kills, matches, wins, losses: matches - wins,
-    medals: (typeof medals === 'number') ? medals : Math.floor(r() * 180) + 5,
-    outfit: OUTFIT_COLORS[Math.floor(r() * OUTFIT_COLORS.length)],
-    sword: SWORD_COLORS[Math.floor(r() * SWORD_COLORS.length)]
-  };
-}
-function allKnownPlayers(){
-  const names = [];
-  const add = n => { if (n && n !== APP.username && !names.includes(n)) names.push(n); };
-  Object.keys(Store.load('trugo_players', {})).forEach(add);
-  SUGGESTED_PLAYERS.forEach(add);
-  ensureSeasonLeaderboard().forEach(b => add(b.name));
-  return names;
-}
-function getProfile(name){
-  if (name === APP.username) return ownProfile();
-  const dir = Store.load('trugo_players', {});
-  if (dir[name]) return Object.assign({ name }, dir[name]);
-  const bot = ensureSeasonLeaderboard().find(b => b.name === name);
-  return botProfile(name, bot ? bot.medals : undefined);
-}
-
-function avatarSvg(outfit, sword){
-  const dark = '#0d1420';
-  return `<svg viewBox="0 0 120 170" class="avatar-svg" aria-hidden="true">
-    <ellipse cx="60" cy="160" rx="34" ry="6" fill="rgba(0,0,0,.35)"/>
-    <path d="M42 62 L78 62 L88 138 L32 138 Z" fill="${outfit}" opacity=".55"/>
-    <rect x="44" y="118" width="14" height="38" rx="5" fill="${dark}"/>
-    <rect x="62" y="118" width="14" height="38" rx="5" fill="${dark}"/>
-    <rect x="38" y="62" width="44" height="62" rx="12" fill="${outfit}"/>
-    <rect x="26" y="66" width="14" height="46" rx="7" fill="${outfit}"/>
-    <rect x="80" y="66" width="14" height="46" rx="7" fill="${outfit}"/>
-    <circle cx="60" cy="42" r="20" fill="${outfit}"/>
-    <rect x="46" y="38" width="28" height="8" rx="4" fill="${sword}"/>
-    <rect x="96" y="30" width="6" height="86" rx="3" fill="${sword}"/>
-    <rect x="90" y="108" width="18" height="6" rx="3" fill="${dark}"/>
-  </svg>`;
-}
-
-
-/* ---------------------------------------------------------
-   MAGASIN : OR + BOITES A RARETE
---------------------------------------------------------- */
-const BOX_ATTEMPTS_TO_FINALIZE = 4;
-const COMMON_BOX_PRICE = 3000;
-const CUP_REWARD_INTERVAL = 15;
-const CUP_REWARD_BOX_COUNT = 10;
-
-const RARITIES = [
-  { key:'niveau 1',     label:'Commun',     weight:40, coins:2000,  cls:'rarity-commun' },
-  { key:'niveau 2',       label:'Rare',       weight:25, coins:5000,  cls:'rarity-rare' },
-  { key:'niveau 3',     label:'Épique',     weight:15, coins:9000,  cls:'rarity-epique' },
-  { key:'niveau 4',   label:'Colossal',   weight:8,  coins:13000, cls:'rarity-colossal' },
-  { key:'niveau 5', label:'Légendaire', weight:6,  coins:17000, cls:'rarity-legendaire' },
-  { key:'niveau 6',     label:'Ultime',     weight:4,  coins:21000, cls:'rarity-ultime' },
-  { key:'niveau 7',    label:'Suprême',    weight:2,  coins:30000, cls:'rarity-supreme' },
-];
-const RARITY_WEIGHT_TOTAL = RARITIES.reduce((s, r) => s + r.weight, 0);
-
-function rollRarityIndex(){
-  let r = Math.random() * RARITY_WEIGHT_TOTAL;
-  for (let i = 0; i < RARITIES.length; i++){
-    r -= RARITIES[i].weight;
-    if (r <= 0) return i;
-  }
-  return 0;
-}
-
-function saveGold(){ Store.save('trugo_gold', APP.gold); }
-function saveBoxes(){ Store.save('trugo_boxes', APP.boxes); }
-function addGold(n){ APP.gold = Math.max(0, APP.gold + n); saveGold(); updateLobbyGoldUI(); }
-function spendGold(n){
-  if (APP.gold < n) return false;
-  APP.gold -= n; saveGold(); updateLobbyGoldUI();
-  return true;
-}
-function addBoxes(n){
-  for (let i = 0; i < n; i++){
-    APP.boxes.push({ id: `${Date.now()}_${Math.random().toString(36).slice(2,8)}`, tier: 0, attempts: 0 });
-  }
-  saveBoxes();
-}
-
-function updateLobbyGoldUI(){
-  const el = document.getElementById('lobby-gold');
-  if (el) el.textContent = `🪙 ${APP.gold}`;
-}
-
-function availableCupReward(){
-  const cup = cupFromXp(APP.stats.xp);
-  const milestone = Math.floor(cup / CUP_REWARD_INTERVAL) * CUP_REWARD_INTERVAL;
-  return (milestone > 0 && milestone > APP.cupRewardClaimed) ? milestone : 0;
-}
-
-function renderShop(){
-  updateLobbyGoldUI();
-  document.getElementById('shop-gold-value').textContent = APP.gold;
-
-  // Offre spéciale liée aux coupes
-  const rewardEl = document.getElementById('shop-cup-reward');
-  const milestone = availableCupReward();
-  if (milestone){
-    rewardEl.style.display = '';
-    rewardEl.querySelector('.cup-reward-text').textContent =
-      `Coupe ${milestone} atteinte : 10 boîtes offertes !`;
-  } else {
-    rewardEl.style.display = 'none';
-  }
-
-  renderMyBoxes();
-}
-
-document.getElementById('shop-claim-cup-reward').addEventListener('click', ()=>{
-  const milestone = availableCupReward();
-  if (!milestone) return;
-  APP.cupRewardClaimed = milestone;
-  Store.save('trugo_cup_reward_claimed', milestone);
-  addBoxes(CUP_REWARD_BOX_COUNT);
-  renderShop();
-});
-
-document.getElementById('shop-buy-common-box').addEventListener('click', ()=>{
-  if (spendGold(COMMON_BOX_PRICE)){
-    addBoxes(1);
-    renderShop();
-  } else {
-    const btn = document.getElementById('shop-buy-common-box');
-    btn.classList.remove('shake'); void btn.offsetWidth; btn.classList.add('shake');
-  }
-});
-
-function renderMyBoxes(){
-  const wrap = document.getElementById('shop-boxes-grid');
-  wrap.innerHTML = '';
-  if (APP.boxes.length === 0){
-    wrap.innerHTML = '<p class="panel-note shop-empty">Aucune boîte pour l\'instant. Gagne-en en jouant ou achète-en une ci-dessus.</p>';
-    return;
-  }
-  APP.boxes.forEach(box => wrap.appendChild(buildBoxCard(box)));
-}
-
-function buildBoxCard(box){
-  const rarity = RARITIES[box.tier];
-  const card = document.createElement('div');
-  card.className = `box-card ${rarity.cls}`;
-  card.dataset.boxId = box.id;
-  card.innerHTML = `
-    <div class="box-icon">🎁</div>
-    <div class="box-rarity-name">${rarity.label}</div>
-    <div class="box-attempts">${box.attempts} / ${BOX_ATTEMPTS_TO_FINALIZE}</div>
-    <button class="box-action-btn">Ouvrir !</button>
-  `;
-  card.querySelector('.box-action-btn').addEventListener('click', ()=> BoxOpen.open(box.id));
-  return card;
-}
-
-/* ---------------------------------------------------------
-   ECRAN PLEIN ECRAN D'OUVERTURE DE BOITE
---------------------------------------------------------- */
-const BoxOpen = (()=>{
-  let currentBoxId = null;
-  let busy = false;
-
-  const bg = ()=> document.getElementById('boxopen-bg');
-  const icon = ()=> document.getElementById('boxopen-icon');
-  const nameEl = ()=> document.getElementById('boxopen-rarity-name');
-  const hintEl = ()=> document.getElementById('boxopen-hint');
-  const dotsEl = ()=> document.getElementById('boxopen-dots');
-
-  function renderDots(box){
-    const dots = [];
-    for (let i = 0; i < BOX_ATTEMPTS_TO_FINALIZE; i++){
-      dots.push(`<span class="boxopen-dot${i < box.attempts ? ' filled' : ''}"></span>`);
-    }
-    dotsEl().innerHTML = dots.join('');
-  }
-
-  function applyRarity(box){
-    const rarity = RARITIES[box.tier];
-    bg().className = `boxopen-bg ${rarity.cls}`;
-    icon().className = `box-icon boxopen-icon ${rarity.cls}`;
-    nameEl().textContent = rarity.label;
-    renderDots(box);
-  }
-
-  function open(boxId){
-    const box = APP.boxes.find(b => b.id === boxId);
-    if (!box) return;
-    currentBoxId = boxId;
-    busy = false;
-    closePanel('panel-shop');
-    document.getElementById('boxopen-reward-overlay').classList.remove('open');
-    document.getElementById('boxopen-box-btn').style.display = '';
-    hintEl().textContent = "Appuie sur la boîte pour tenter de l'améliorer";
-    applyRarity(box);
-    showScreen('screen-boxopen');
-  }
-
-  function tap(){
-    const box = APP.boxes.find(b => b.id === currentBoxId);
-    if (!box || busy) return;
-    busy = true;
-    AudioEngine.playClick && AudioEngine.playClick();
-    icon().classList.add('box-spinning');
-
-    setTimeout(()=>{
-      const rolled = rollRarityIndex();
-      if (rolled > box.tier) box.tier = rolled;
-      box.attempts += 1;
-      saveBoxes();
-
-      icon().classList.remove('box-spinning');
-      applyRarity(box);
-      icon().classList.add('box-pulse');
-      setTimeout(()=> icon().classList.remove('box-pulse'), 450);
-
-      if (box.attempts >= BOX_ATTEMPTS_TO_FINALIZE){
-        finalize(box);
-      } else {
-        busy = false;
-      }
-    }, 900);
-  }
-
-  function finalize(box){
-    const rarity = RARITIES[box.tier];
-    hintEl().textContent = 'Ouverture…';
-    icon().classList.add('box-opening-burst');
-
-    setTimeout(()=>{
-      document.getElementById('boxopen-box-btn').style.display = 'none';
-      addGold(rarity.coins);
-      APP.boxes = APP.boxes.filter(b => b.id !== box.id);
-      saveBoxes();
-
-      document.getElementById('boxopen-reward-rarity').textContent = rarity.label;
-      document.getElementById('boxopen-reward-rarity').className = `boxopen-reward-rarity ${rarity.cls}`;
-      document.getElementById('boxopen-reward-coins').textContent = `+${rarity.coins} 🪙`;
-      document.getElementById('boxopen-reward-overlay').classList.add('open');
-    }, 650);
-  }
-
-  function close(){
-    currentBoxId = null;
-    showScreen('screen-lobby');
-    Lobby.start();
-  }
-
-  document.getElementById('boxopen-box-btn').addEventListener('click', tap);
-  document.getElementById('btn-boxopen-close').addEventListener('click', close);
-  document.getElementById('boxopen-ok-btn').addEventListener('click', close);
-
-  return { open };
-})();
-
-document.getElementById('btn-shop').addEventListener('click', ()=>{
-  renderShop();
-  openPanel('panel-shop');
-});
 
 /* ---------------------------------------------------------
    SAISON DES MEDAILLES
@@ -749,14 +490,13 @@ document.getElementById('login-form').addEventListener('submit', (e)=>{
   if (!name || !pass) return;
   APP.username = name;
   Store.save('trugo_username', name);
-  syncOwnProfile();
-  // Le mot de passe n'est pas transmis.
+  // Le mot de passe n'est pas transmis à un serveur : il n'y en a pas encore.
   enterLobby();
 });
 
 function enterLobby(){
-  syncOwnProfile();
   document.getElementById('lobby-username').textContent = APP.username;
+  updateLeagueUI();
   showScreen('screen-lobby');
   Lobby.start();
 }
@@ -764,69 +504,7 @@ function enterLobby(){
 function updateLobbyPointsUI(){
   const el = document.getElementById('lobby-points');
   if (el) el.textContent = `🏅 ${APP.points} médailles`;
-  const cup = document.getElementById('btn-cup-label');
-  if (cup) cup.textContent = `Coupe ${cupFromXp(APP.stats.xp)}`;
-  updateLobbyGoldUI();
 }
-
-/* ---------------------------------------------------------
-   PANNEAU COUPE (progression)
---------------------------------------------------------- */
-function renderCupPanel(){
-  const xp = APP.stats.xp;
-  const cup = cupFromXp(xp);
-  const inCup = xp % XP_PER_CUP;
-  document.getElementById('cup-title').textContent = `Coupe ${cup}`;
-  document.getElementById('cup-xp-text').textContent = `${inCup} / ${XP_PER_CUP} XP`;
-  document.getElementById('cup-bar-fill').style.width = `${inCup}%`;
-  document.getElementById('cup-next').textContent =
-    `Encore ${XP_PER_CUP - inCup} XP pour atteindre la Coupe ${cup + 1}`;
-}
-document.getElementById('btn-cup').addEventListener('click', ()=>{
-  renderCupPanel();
-  openPanel('panel-cup');
-});
-
-/* ---------------------------------------------------------
-   PANNEAU PROFIL
---------------------------------------------------------- */
-function showProfile(name){
-  const p = getProfile(name);
-  const isMe = name === APP.username;
-  document.getElementById('profile-name').textContent = p.name;
-  document.getElementById('profile-cup').textContent = `Coupe ${cupFromXp(p.xp)}`;
-  document.getElementById('profile-avatar').innerHTML = avatarSvg(p.outfit, p.sword);
-  const stats = [
-    ['Éliminations', p.kills], ['Médailles', p.medals], ['Parties lancées', p.matches],
-    ['Victoires', p.wins], ['Défaites', p.losses], ['XP total', p.xp]
-  ];
-  document.getElementById('profile-stats').innerHTML = stats.map(([label, value]) =>
-    `<div class="stat-cell"><span class="stat-value">${value}</span><span class="stat-label">${label}</span></div>`
-  ).join('');
-  const btn = document.getElementById('profile-add-friend');
-  if (isMe){
-    btn.style.display = 'none';
-  } else {
-    btn.style.display = '';
-    const already = APP.friends.includes(name);
-    btn.textContent = already ? 'Déjà ami' : 'Ajouter en ami';
-    btn.disabled = already;
-    btn.onclick = ()=>{
-      if (!APP.friends.includes(name)){
-        APP.friends.push(name);
-        Store.save('trugo_friends', APP.friends);
-        renderFriendsMine();
-        renderFriendsResults(document.getElementById('friends-search').value);
-      }
-      btn.textContent = 'Déjà ami';
-      btn.disabled = true;
-    };
-  }
-  openPanel('panel-profile');
-}
-document.getElementById('lobby-username').addEventListener('click', ()=>{
-  if (APP.username) showProfile(APP.username);
-});
 
 /* ---------------------------------------------------------
    PANNEAU PERSONNAGE
@@ -848,12 +526,16 @@ function buildSwatches(containerId, colors, current, onPick){
 }
 document.getElementById('btn-character').addEventListener('click', ()=>{
   buildSwatches('swatch-outfit', OUTFIT_COLORS, APP.outfitColor, (c)=>{
-    APP.outfitColor = c; Store.save('trugo_outfit', c); syncOwnProfile(); Lobby.applyCharacterColors();
+    APP.outfitColor = c; Store.save('trugo_outfit', c); Lobby.applyCharacterColors();
   });
   buildSwatches('swatch-sword', SWORD_COLORS, APP.swordColor, (c)=>{
-    APP.swordColor = c; Store.save('trugo_sword', c); syncOwnProfile(); Lobby.applyCharacterColors();
+    APP.swordColor = c; Store.save('trugo_sword', c); Lobby.applyCharacterColors();
   });
   openPanel('panel-character');
+});
+
+document.getElementById('btn-shop').addEventListener('click', ()=>{
+  // Bouton volontairement inactif pour l'instant.
 });
 
 document.getElementById('btn-equipment').addEventListener('click', ()=>{
@@ -880,16 +562,33 @@ document.querySelectorAll('.equipment-card').forEach(card=>{
 --------------------------------------------------------- */
 const SUGGESTED_PLAYERS = ['Raven92','NyxBlade','KatoStorm','VexOni','JunoFang','MiloSprint','ZedArrow','AshVane'];
 
-function friendRow(name, withAdd){
-  const li = document.createElement('li');
-  const link = document.createElement('span');
-  link.className = 'name-link';
-  const cup = cupFromXp(getProfile(name).xp);
-  link.innerHTML = `${escapeHtml(name)} <small class="cup-tag">Coupe ${cup}</small>`;
-  link.addEventListener('click', ()=> showProfile(name));
-  li.appendChild(link);
-  if (withAdd){
+function renderFriendsMine(){
+  const ul = document.getElementById('friends-mine');
+  ul.innerHTML = '';
+  if (APP.friends.length === 0){
+    ul.innerHTML = '<li class="empty">Aucun ami pour l\'instant</li>';
+    return;
+  }
+  APP.friends.forEach(name=>{
+    const li = document.createElement('li');
+    li.innerHTML = `<span>${escapeHtml(name)}</span>`;
+    ul.appendChild(li);
+  });
+}
+function renderFriendsResults(query){
+  const ul = document.getElementById('friends-results');
+  ul.innerHTML = '';
+  const q = query.trim().toLowerCase();
+  if (!q){ return; }
+  const matches = SUGGESTED_PLAYERS.filter(n => n.toLowerCase().includes(q) && n !== APP.username);
+  if (matches.length === 0){
+    ul.innerHTML = '<li class="empty">Aucun joueur trouvé</li>';
+    return;
+  }
+  matches.forEach(name=>{
+    const li = document.createElement('li');
     const already = APP.friends.includes(name);
+    li.innerHTML = `<span>${escapeHtml(name)}</span>`;
     const btn = document.createElement('button');
     btn.textContent = already ? 'Ajouté' : 'Ajouter';
     btn.disabled = already;
@@ -902,45 +601,12 @@ function friendRow(name, withAdd){
       }
     });
     li.appendChild(btn);
-  } else {
-    const btn = document.createElement('button');
-    btn.textContent = 'Retirer';
-    btn.className = 'danger';
-    btn.addEventListener('click', ()=>{
-      APP.friends = APP.friends.filter(n => n !== name);
-      Store.save('trugo_friends', APP.friends);
-      renderFriendsMine();
-      renderFriendsResults(document.getElementById('friends-search').value);
-    });
-    li.appendChild(btn);
-  }
-  return li;
-}
-function renderFriendsMine(){
-  const ul = document.getElementById('friends-mine');
-  ul.innerHTML = '';
-  if (APP.friends.length === 0){
-    ul.innerHTML = '<li class="empty">Aucun ami pour l\'instant</li>';
-    return;
-  }
-  APP.friends.forEach(name => ul.appendChild(friendRow(name, false)));
-}
-function renderFriendsResults(query){
-  const ul = document.getElementById('friends-results');
-  ul.innerHTML = '';
-  const q = (query || '').trim().toLowerCase();
-  let matches = allKnownPlayers();
-  if (q) matches = matches.filter(n => n.toLowerCase().includes(q));
-  else matches = matches.slice(0, 6); // sans recherche : quelques joueurs suggérés
-  if (matches.length === 0){
-    ul.innerHTML = '<li class="empty">Aucun joueur trouvé</li>';
-    return;
-  }
-  matches.forEach(name => ul.appendChild(friendRow(name, true)));
+    ul.appendChild(li);
+  });
 }
 document.getElementById('btn-friends').addEventListener('click', ()=>{
   document.getElementById('friends-search').value = '';
-  renderFriendsResults('');
+  document.getElementById('friends-results').innerHTML = '';
   renderFriendsMine();
   openPanel('panel-friends');
 });
@@ -1169,7 +835,12 @@ const Lobby = (()=>{
 document.getElementById('btn-play').addEventListener('click', ()=>{
   AudioEngine.unlock();
   Lobby.stop();
-  startMatchmaking();
+  startMatchmaking(false);
+});
+document.getElementById('btn-ranked').addEventListener('click', ()=>{
+  AudioEngine.unlock();
+  Lobby.stop();
+  startMatchmaking(true); // partie classée
 });
 document.getElementById('btn-cancel-mm').addEventListener('click', ()=>{
   Matchmaking.cancel();
@@ -1177,10 +848,12 @@ document.getElementById('btn-cancel-mm').addEventListener('click', ()=>{
 
 const Matchmaking = (()=>{
   let interval = null;
-  let secondsLeft = 12;
+  let secondsLeft = 10;
+  let ranked = false;
 
-  function start(){
-    secondsLeft = 12;
+  function start(isRanked){
+    ranked = !!isRanked;
+    secondsLeft = 10;
     document.getElementById('mm-status').textContent = 'Recherche de joueurs…';
     document.getElementById('mm-timer').textContent = secondsLeft;
     showScreen('screen-matchmaking');
@@ -1191,7 +864,8 @@ const Matchmaking = (()=>{
         clearInterval(interval);
         document.getElementById('mm-status').textContent = 'Complétion avec des robots…';
         setTimeout(()=>{
-          playModeRoulette();
+          if (ranked) Match.start('frappe', true); // classé : pas de roulette, règles Frappe Dolling
+          else playModeRoulette();
         }, 700);
       }
     }, 1000);
@@ -1203,7 +877,7 @@ const Matchmaking = (()=>{
   }
   return { start, cancel };
 })();
-function startMatchmaking(){ Matchmaking.start(); }
+function startMatchmaking(isRanked){ Matchmaking.start(isRanked); }
 
 /* ---------------------------------------------------------
    ROULETTE DE MODE — choisit aléatoirement Frappe Dolling ou
@@ -1256,7 +930,7 @@ let MATCH_DURATION = FRAPPE_DURATION; // ajusté selon le mode choisi au lanceme
 const ARENA_RADIUS = 15; // carte de 30x30 unités (diamètre = 30)
 const MAX_HP = 750;
 const DAMAGE = 80;
-const CROWN_MAX_HP = 20000;
+const CROWN_MAX_HP = 10000;
 const CROWN_DAMAGE = 500;
 const CROWN_HOLD_SECONDS = 10;
 const CROWN_ATTACK_RANGE = 2.2;
@@ -1264,7 +938,7 @@ const RESPAWN_DELAY = 15;
 const ATTACK_RANGE = 1.6;
 const ATTACK_COOLDOWN = 0.6;
 const TOTAL_SLOTS = 8;
-const BASE_SPEED = 2; // vitesse de base d'un personnage : 2 unités par seconde (doublée)
+const BASE_SPEED = 4; // vitesse de base d'un personnage : 4 unités par seconde (doublée deux fois)
 const MAX_TURN_RATE = Math.PI * 2.6; // rotation max (rad/s) : empêche le stick de faire "tourner" le perso sur lui-même au lieu de le déplacer
 
 function stepTowardAngle(current, target, maxStep){
@@ -1291,6 +965,7 @@ const Match = (()=>{
   let obstacles = []; // {x,z,radius} buildings/trees for simple collision
   let dustPoints = null;
   let currentGameMode = 'frappe'; // 'frappe' (Frappe Dolling) | 'couronne' (Couronne Hunter)
+  let currentRanked = false; // partie classée (ligue selon les éliminations)
   let crown = null; // {mesh, pedestal, hp, state:'vault'|'held', holder, holdStartedAt}
   let fogUntil = 0;
   let equipmentUsed = new Set();
@@ -1298,10 +973,7 @@ const Match = (()=>{
 
   // ---- mode adrénaline ----
   let hemiLight, sunLight;
-  let speedMultiplier = 2;
-  let playerSprint = false; // bouton chaussure : vitesse x2 pour le joueur
-  const SPRINT_MULTIPLIER = 2;
-  const PLAYER_TURN_RATE = 2.4; // rad/s à pleine inclinaison du joystick
+  let speedMultiplier = 1;
   let adrenalineActive = false;
   let adrenalineTimeout = null;
   let adrenalineEndTimeout = null;
@@ -1843,13 +1515,6 @@ const Match = (()=>{
 
   document.getElementById('btn-attack').addEventListener('click', ()=>{ attackRequested = true; });
 
-  const sprintBtn = document.getElementById('btn-sprint');
-  function setSprint(on){
-    playerSprint = on;
-    sprintBtn.classList.toggle('active', on);
-  }
-  sprintBtn.addEventListener('click', ()=>{ setSprint(!playerSprint); });
-
   function useEquipment(type){
     if (!running || !APP.equipment.includes(type) || equipmentUsed.has(type)) return;
     const player = getPlayer();
@@ -1905,16 +1570,22 @@ const Match = (()=>{
     if (f.attackCooldown > 0) f.attackCooldown -= dt;
 
     if (f.isPlayer){
-      // Joystick : haut = avancer, gauche/droite = tourner (on ne pivote plus sur place).
-      const steer = joystickVec.x;      // droite positif
-      const forward = -joystickVec.y;   // haut positif
-      if (forward > 0.12){
-        const mag = Math.min(1, Math.hypot(joystickVec.x, joystickVec.y));
-        // droite du joystick => rotation vers la droite du personnage (sens horaire vu du dessus)
-        f.rotY -= steer * PLAYER_TURN_RATE * dt;
-        const sprint = playerSprint ? SPRINT_MULTIPLIER : 1;
-        const speed = BASE_SPEED * speedMultiplier * sprint * mag;
-        tryMove(f, Math.sin(f.rotY)*speed*dt, Math.cos(f.rotY)*speed*dt);
+      const moveX = joystickVec.x, moveZ = joystickVec.y;
+      const mag = Math.hypot(moveX, moveZ);
+      if (mag > 0.12){
+        // "haut" (moveZ négatif) = tout droit devant le personnage (direction de la caméra),
+        // "droite" (moveX positif) = strafe vers la droite du personnage.
+        const moveForward = -moveZ;
+        const moveRight = moveX;
+        const worldX = camDirX*moveForward + camDirZ*moveRight;
+        const worldZ = camDirZ*moveForward - camDirX*moveRight;
+        const speed = BASE_SPEED * speedMultiplier;
+        tryMove(f, worldX*speed*dt, worldZ*speed*dt);
+        // on tourne progressivement vers la direction du déplacement (vitesse limitée)
+        // au lieu de faire pivoter le personnage instantanément : ça évite l'effet
+        // de "rotation sur place" et fait bien avancer le joueur dans la carte.
+        const targetRot = Math.atan2(worldX, worldZ);
+        f.rotY = stepTowardAngle(f.rotY, targetRot, MAX_TURN_RATE*dt);
       }
       if (attackRequested && f.attackCooldown <= 0){
         performAttack(f);
@@ -2294,8 +1965,9 @@ const Match = (()=>{
     }, 1000);
   }
 
-  function start(mode){
+  function start(mode, ranked){
     currentGameMode = mode === 'couronne' ? 'couronne' : 'frappe';
+    currentRanked = !!ranked && currentGameMode === 'frappe';
     MATCH_DURATION = currentGameMode === 'couronne' ? COURONNE_DURATION : FRAPPE_DURATION;
 
     showScreen('screen-match');
@@ -2316,7 +1988,6 @@ const Match = (()=>{
     clearTimeout(adrenalineEndTimeout);
     adrenalineActive = false;
     speedMultiplier = 1;
-    setSprint(false);
     document.getElementById('adrenaline-overlay').classList.remove('show');
     document.getElementById('adrenaline-banner').classList.remove('show');
     if (currentGameMode === 'frappe') scheduleAdrenaline(); // pas de mode adrénaline en Couronne Hunter
@@ -2348,13 +2019,11 @@ const Match = (()=>{
     list.innerHTML = '';
     const titleEl = document.querySelector('#screen-endmatch h2');
     const note = document.querySelector('#screen-endmatch .end-note');
-    let outcome = null;
 
     if (currentGameMode === 'couronne'){
       // Couronne Hunter : victoire par possession de 10 secondes, sinon match nul.
       // Aucune médaille n'est distribuée dans ce mode.
       const winner = opts.winner || null;
-      outcome = winner ? (winner.isPlayer ? 'win' : 'loss') : 'draw';
       if (titleEl) titleEl.textContent = winner ? 'Couronne remportée !' : 'Match nul';
       const li = document.createElement('li');
       if (winner){
@@ -2366,6 +2035,21 @@ const Match = (()=>{
       }
       list.appendChild(li);
       if (note) note.textContent = 'Aucune médaille en Couronne Hunter. Retour au lobby…';
+    } else if (currentRanked){
+      // Partie classée : la ligue dépend des éliminations du joueur, annoncée au retour au lobby
+      if (titleEl) titleEl.textContent = 'Partie classée terminée';
+      const sorted = [...fighters].sort((a,b)=>b.kills-a.kills);
+      let playerKills = 0;
+      sorted.forEach((f,i)=>{
+        if (f.isPlayer) playerKills = f.kills;
+        const li = document.createElement('li');
+        if (f.isPlayer) li.className = 'me';
+        li.innerHTML = `<span>#${i+1} ${escapeHtml(f.name)}</span><span>${f.kills} élim.</span>`;
+        list.appendChild(li);
+      });
+      pendingLeagueReveal = { index: leagueIndexForKills(playerKills), kills: playerKills };
+      Store.save('trugo_league', pendingLeagueReveal.index);
+      if (note) note.textContent = 'Ta ligue sera annoncée au retour au lobby…';
     } else {
       if (titleEl) titleEl.textContent = 'Partie terminée';
       const sorted = [...fighters].sort((a,b)=>b.kills-a.kills);
@@ -2373,7 +2057,7 @@ const Match = (()=>{
       sorted.forEach((f,i)=>{
         const rank = i + 1;
         const delta = pointsForRank(rank);
-        if (f.isPlayer){ playerDelta = delta; outcome = rank === 1 ? 'win' : 'loss'; }
+        if (f.isPlayer) playerDelta = delta;
         const li = document.createElement('li');
         if (f.isPlayer) li.className = 'me';
         const medal = medalForRank(rank);
@@ -2391,28 +2075,15 @@ const Match = (()=>{
       }
     }
 
-    // XP de la partie : versée uniquement maintenant, selon le nombre d'éliminations
-    const me = fighters.find(f => f.isPlayer);
-    const myKills = me ? me.kills : 0;
-    const xpGain = xpForKills(myKills);
-    const cupBefore = cupFromXp(APP.stats.xp);
-    APP.stats.xp += xpGain;
-    APP.stats.kills += myKills;
-    APP.stats.matches += 1;
-    if (outcome === 'win') APP.stats.wins += 1;
-    else if (outcome === 'loss') APP.stats.losses += 1;
-    saveStats();
-    const cupAfter = cupFromXp(APP.stats.xp);
-    addBoxes(1); // une boîte gagnée à chaque fin de partie
-    if (note){
-      note.textContent = `+${xpGain} XP (${myKills} élim.) · +1 boîte 🎁` +
-        (cupAfter > cupBefore ? ` — Coupe ${cupAfter} atteinte !` : '') + ' · ' + note.textContent;
-    }
-
     showScreen('screen-endmatch');
     setTimeout(()=>{
       showScreen('screen-lobby');
       Lobby.start();
+      if (pendingLeagueReveal){
+        const r = pendingLeagueReveal;
+        pendingLeagueReveal = null;
+        showLeagueReveal(r.index, r.kills);
+      }
     }, 3500);
   }
 
