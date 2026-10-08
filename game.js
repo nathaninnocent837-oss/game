@@ -1776,7 +1776,7 @@ const Match = (()=>{
         updateHpUI(f.hp);
         hideRespawnOverlay();
       }
-    }, RESPAWN_DELAY*1000);
+    }, RESPAWN_DELAY*600);
   }
 
   function setAdrenalineTint(f, on){
@@ -1987,7 +1987,7 @@ const Match = (()=>{
     clearTimeout(adrenalineTimeout);
     clearTimeout(adrenalineEndTimeout);
     adrenalineActive = false;
-    speedMultiplier = 1;
+    speedMultiplier = 2;
     document.getElementById('adrenaline-overlay').classList.remove('show');
     document.getElementById('adrenaline-banner').classList.remove('show');
     if (currentGameMode === 'frappe') scheduleAdrenaline(); // pas de mode adrénaline en Couronne Hunter
@@ -2028,7 +2028,7 @@ const Match = (()=>{
       const li = document.createElement('li');
       if (winner){
         li.innerHTML = winner.isPlayer
-          ? `<span class="me">👑 Tu as gardé la couronne 10 secondes !</span>`
+          ? `<span class="me">👑 bien joué ! tu as garder la couronne ! </span>`
           : `<span>👑 ${escapeHtml(winner.name)} a gardé la couronne 10 secondes.</span>`;
       } else {
         li.innerHTML = `<span>Personne n'a réussi à garder la couronne 10 secondes. Match nul.</span>`;
