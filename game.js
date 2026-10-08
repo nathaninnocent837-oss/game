@@ -11,7 +11,7 @@ const BOT_NAMES = ['Raven','Nyx','Kato','Vex','Juno','Milo','Zed','Ash','Ika','B
 /* ---------------------------------------------------------
    MEDAILLES / POINTS DE CLASSEMENT
 --------------------------------------------------------- */
-const RANK_POINTS = [12, 9, 6, 4, 1, -3, -6, -8, -10, -12]; // top1 -> top10
+const RANK_POINTS = [13, 10, 7, 4, 1, -3, -6, -8, -10, -12]; // top1 -> top10
 function pointsForRank(rank){
   return (rank >= 1 && rank <= RANK_POINTS.length) ? RANK_POINTS[rank - 1] : 0;
 }
@@ -157,19 +157,19 @@ function avatarSvg(outfit, sword){
 /* ---------------------------------------------------------
    MAGASIN : OR + BOITES A RARETE
 --------------------------------------------------------- */
-const BOX_ATTEMPTS_TO_FINALIZE = 6;
-const COMMON_BOX_PRICE = 1000;
+const BOX_ATTEMPTS_TO_FINALIZE = 4;
+const COMMON_BOX_PRICE = 3000;
 const CUP_REWARD_INTERVAL = 15;
 const CUP_REWARD_BOX_COUNT = 10;
 
 const RARITIES = [
-  { key:'commun',     label:'Commun',     weight:40, coins:2000,  cls:'rarity-commun' },
-  { key:'rare',       label:'Rare',       weight:25, coins:5000,  cls:'rarity-rare' },
-  { key:'epique',     label:'Épique',     weight:15, coins:9000,  cls:'rarity-epique' },
-  { key:'colossal',   label:'Colossal',   weight:8,  coins:13000, cls:'rarity-colossal' },
-  { key:'legendaire', label:'Légendaire', weight:6,  coins:17000, cls:'rarity-legendaire' },
-  { key:'ultime',     label:'Ultime',     weight:4,  coins:21000, cls:'rarity-ultime' },
-  { key:'supreme',    label:'Suprême',    weight:2,  coins:30000, cls:'rarity-supreme' },
+  { key:'niveau 1',     label:'Commun',     weight:40, coins:2000,  cls:'rarity-commun' },
+  { key:'niveau 2',       label:'Rare',       weight:25, coins:5000,  cls:'rarity-rare' },
+  { key:'niveau 3',     label:'Épique',     weight:15, coins:9000,  cls:'rarity-epique' },
+  { key:'niveau 4',   label:'Colossal',   weight:8,  coins:13000, cls:'rarity-colossal' },
+  { key:'niveau 5', label:'Légendaire', weight:6,  coins:17000, cls:'rarity-legendaire' },
+  { key:'niveau 6',     label:'Ultime',     weight:4,  coins:21000, cls:'rarity-ultime' },
+  { key:'niveau 7',    label:'Suprême',    weight:2,  coins:30000, cls:'rarity-supreme' },
 ];
 const RARITY_WEIGHT_TOTAL = RARITIES.reduce((s, r) => s + r.weight, 0);
 
@@ -264,7 +264,7 @@ function buildBoxCard(box){
     <div class="box-icon">🎁</div>
     <div class="box-rarity-name">${rarity.label}</div>
     <div class="box-attempts">${box.attempts} / ${BOX_ATTEMPTS_TO_FINALIZE}</div>
-    <button class="box-action-btn">Ouvrir</button>
+    <button class="box-action-btn">Ouvrir !</button>
   `;
   card.querySelector('.box-action-btn').addEventListener('click', ()=> BoxOpen.open(box.id));
   return card;
@@ -750,7 +750,7 @@ document.getElementById('login-form').addEventListener('submit', (e)=>{
   APP.username = name;
   Store.save('trugo_username', name);
   syncOwnProfile();
-  // Le mot de passe n'est pas transmis à un serveur : il n'y en a pas encore.
+  // Le mot de passe n'est pas transmis.
   enterLobby();
 });
 
@@ -1177,10 +1177,10 @@ document.getElementById('btn-cancel-mm').addEventListener('click', ()=>{
 
 const Matchmaking = (()=>{
   let interval = null;
-  let secondsLeft = 10;
+  let secondsLeft = 12;
 
   function start(){
-    secondsLeft = 10;
+    secondsLeft = 12;
     document.getElementById('mm-status').textContent = 'Recherche de joueurs…';
     document.getElementById('mm-timer').textContent = secondsLeft;
     showScreen('screen-matchmaking');
@@ -1256,7 +1256,7 @@ let MATCH_DURATION = FRAPPE_DURATION; // ajusté selon le mode choisi au lanceme
 const ARENA_RADIUS = 15; // carte de 30x30 unités (diamètre = 30)
 const MAX_HP = 750;
 const DAMAGE = 80;
-const CROWN_MAX_HP = 10000;
+const CROWN_MAX_HP = 20000;
 const CROWN_DAMAGE = 500;
 const CROWN_HOLD_SECONDS = 10;
 const CROWN_ATTACK_RANGE = 2.2;
@@ -1298,7 +1298,7 @@ const Match = (()=>{
 
   // ---- mode adrénaline ----
   let hemiLight, sunLight;
-  let speedMultiplier = 1;
+  let speedMultiplier = 2;
   let playerSprint = false; // bouton chaussure : vitesse x2 pour le joueur
   const SPRINT_MULTIPLIER = 2;
   const PLAYER_TURN_RATE = 2.4; // rad/s à pleine inclinaison du joystick
