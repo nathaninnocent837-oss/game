@@ -6,7 +6,7 @@
         "node": ">=18"
     },
     "scripts": {
-        "start": "node server.js"
+        "start": "node init-db.js && node server.js"
     },
     "dependencies": {
         "express": "^4.17.1",
