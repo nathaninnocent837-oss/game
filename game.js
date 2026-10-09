@@ -42,7 +42,7 @@ const APP = {
   teamCode: Store.load('trugo_teamcode', null),
   equipment: Store.load('trugo_equipment', ['ice', 'fog', 'heal']),
   points: Store.load('trugo_points', 0),
-  league: Store.load('trugo_league', null), // index dans LEAGUES de la dernière partie classée
+  league: Store.load('trugo_league', 0), // ligue actuelle (Bronze par défaut)
 };
 
 /* ---------------------------------------------------------
@@ -70,8 +70,7 @@ let pendingLeagueReveal = null; // {index, kills} annoncé au retour au lobby
 function updateLeagueUI(){
   const el = document.getElementById('lobby-league');
   if (!el) return;
-  const lg = APP.league != null ? LEAGUES[APP.league] : null;
-  if (!lg){ el.classList.remove('show'); return; }
+  const lg = LEAGUES[Number.isInteger(APP.league) ? APP.league : 0] || LEAGUES[0];
   el.textContent = lg.name;
   el.style.setProperty('--league-color', lg.color);
   el.classList.add('show');
@@ -206,9 +205,70 @@ function renderSeasonLeaderboard(){
   });
 }
 document.getElementById('lobby-points').addEventListener('click', ()=>{
-  renderSeasonLeaderboard();
-  openPanel('panel-season');
+  openRankings('medals');
 });
+
+/* ---------------------------------------------------------
+   CLASSEMENTS LIGUES / MEDAILLES
+   Les autres joueurs restent des exemples locaux tant qu'un
+   backend et une base de données ne sont pas connectés.
+--------------------------------------------------------- */
+const DEMO_LEAGUE_PLAYERS = [
+  { name:'Raven92', league:10, medals:2500 },
+  { name:'NyxBlade', league:8, medals:2100 },
+  { name:'KatoStorm', league:6, medals:1800 },
+  { name:'VexOni', league:4, medals:1400 },
+  { name:'JunoFang', league:3, medals:900 },
+  { name:'MiloSprint', league:1, medals:400 },
+  { name:'ZedArrow', league:0, medals:180 }
+];
+let activeRankingTab = 'leagues';
+
+function openRankings(tab='leagues'){
+  activeRankingTab = tab;
+  renderRankings();
+  openPanel('panel-rankings');
+}
+function renderRankings(){
+  const list = document.getElementById('ranking-list');
+  const title = document.getElementById('ranking-panel-title');
+  const description = document.getElementById('ranking-panel-description');
+  if (!list || !title || !description) return;
+  const player = { name: APP.username || 'Toi', league: Math.max(0, Math.min(LEAGUES.length-1, Number(APP.league) || 0)), medals: Number(APP.points) || 0, isPlayer:true };
+  const others = DEMO_LEAGUE_PLAYERS.filter(p => p.name.toLowerCase() !== String(APP.username || '').toLowerCase());
+  let entries = [...others, player];
+  if (activeRankingTab === 'medals') {
+    entries.sort((a,b) => b.medals-a.medals || b.league-a.league);
+    title.textContent = 'Classement des médailles';
+    description.textContent = 'Classement par nombre de médailles de la saison. Les joueurs affichés sont des exemples en mode démo.';
+  } else {
+    entries.sort((a,b) => b.league-a.league || b.medals-a.medals);
+    title.textContent = 'Classement des ligues';
+    description.textContent = 'Classement par ligue, puis par médailles. Les joueurs affichés sont des exemples en mode démo.';
+  }
+  list.replaceChildren();
+  entries.forEach((entry,index)=>{
+    const li = document.createElement('li');
+    if (entry.isPlayer) li.classList.add('me');
+    const name = document.createElement('span');
+    name.className = 'ranking-player-name';
+    name.textContent = `${index+1 <= 3 ? medalForRank(index+1) + ' ' : ''}#${index+1} ${entry.name}`;
+    const stats = document.createElement('span');
+    stats.className = 'ranking-player-stats';
+    const league = LEAGUES[entry.league] || LEAGUES[0];
+    stats.textContent = activeRankingTab === 'medals' ? `🏅 ${entry.medals}` : `${league.name} · 🏅 ${entry.medals}`;
+    stats.style.setProperty('--rank-league-color', league.color);
+    li.append(name,stats);
+    list.appendChild(li);
+  });
+  document.getElementById('btn-ranking-leagues')?.classList.toggle('active', activeRankingTab === 'leagues');
+  document.getElementById('btn-ranking-medals')?.classList.toggle('active', activeRankingTab === 'medals');
+}
+
+document.getElementById('btn-league-ranking')?.addEventListener('click', ()=>openRankings('leagues'));
+document.getElementById('btn-ranking-leagues')?.addEventListener('click', ()=>{ activeRankingTab='leagues'; renderRankings(); });
+document.getElementById('btn-ranking-medals')?.addEventListener('click', ()=>{ activeRankingTab='medals'; renderRankings(); });
+
 
 /* ---------------------------------------------------------
    AUDIO — cloche d'élimination + musique du mode adrénaline
@@ -502,8 +562,8 @@ function enterLobby(){
 }
 
 function updateLobbyPointsUI(){
-  const el = document.getElementById('lobby-points');
-  if (el) el.textContent = `🏅 ${APP.points} médailles`;
+  const el = document.getElementById('lobby-medal-count');
+  if (el) el.textContent = String(APP.points);
 }
 
 /* ---------------------------------------------------------
@@ -1776,7 +1836,7 @@ const Match = (()=>{
         updateHpUI(f.hp);
         hideRespawnOverlay();
       }
-    }, RESPAWN_DELAY*600);
+    }, RESPAWN_DELAY*1000);
   }
 
   function setAdrenalineTint(f, on){
@@ -1987,7 +2047,7 @@ const Match = (()=>{
     clearTimeout(adrenalineTimeout);
     clearTimeout(adrenalineEndTimeout);
     adrenalineActive = false;
-    speedMultiplier = 2;
+    speedMultiplier = 1;
     document.getElementById('adrenaline-overlay').classList.remove('show');
     document.getElementById('adrenaline-banner').classList.remove('show');
     if (currentGameMode === 'frappe') scheduleAdrenaline(); // pas de mode adrénaline en Couronne Hunter
@@ -2028,7 +2088,7 @@ const Match = (()=>{
       const li = document.createElement('li');
       if (winner){
         li.innerHTML = winner.isPlayer
-          ? `<span class="me">👑 bien joué ! tu as garder la couronne ! </span>`
+          ? `<span class="me">👑 Tu as gardé la couronne 10 secondes !</span>`
           : `<span>👑 ${escapeHtml(winner.name)} a gardé la couronne 10 secondes.</span>`;
       } else {
         li.innerHTML = `<span>Personne n'a réussi à garder la couronne 10 secondes. Match nul.</span>`;

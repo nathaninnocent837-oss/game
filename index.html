@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=2">
+<link rel="stylesheet" href="league-updates.css?v=1">
 </head>
 <body>
 
@@ -36,7 +37,7 @@
         <span>Mot de passe</span>
         <input type="password" id="login-pass" maxlength="24" placeholder="••••••••" required>
       </label>
-      <p class="field-note">Connexion enregistrée uniquement sur cet appareil.</p>
+      <p class="field-note">Mode démo : le compte est enregistré uniquement sur cet appareil.</p>
       <button type="submit" class="btn-primary">Se connecter</button>
     </form>
   </div>
@@ -51,6 +52,8 @@
       <svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>
       <span>Amis</span>
     </button>
+    <button class="medal-counter" id="lobby-points" aria-label="Voir le nombre de médailles">🏅 <span id="lobby-medal-count">0</span></button>
+    <button class="league-ranking-btn" id="btn-league-ranking" aria-label="Classement">🏆 <span>CLASSEMENT</span></button>
   </div>
 
   <div class="hud-top-right">
@@ -87,7 +90,6 @@
       <span id="lobby-username" class="player-tag"></span>
       <span id="lobby-league" class="player-league"></span>
     </div>
-    <span id="lobby-points" class="player-points"></span>
   </div>
 </section>
 
@@ -286,6 +288,22 @@
     <p class="end-note">Retour au lobby…</p>
   </div>
 </section>
+
+<!-- ===================== PANNEAU CLASSEMENTS ===================== -->
+<div id="panel-rankings" class="panel">
+  <div class="panel-inner ranking-panel">
+    <div class="panel-head">
+      <h2 id="ranking-panel-title">Classement des ligues</h2>
+      <button class="panel-close" data-close="panel-rankings" aria-label="Fermer">&times;</button>
+    </div>
+    <p class="panel-note" id="ranking-panel-description">Les joueurs sont classés par ligue, puis par médailles.</p>
+    <div class="ranking-board-wrap"><ol id="ranking-list" class="ranking-list"></ol></div>
+    <div class="ranking-tabs" aria-label="Type de classement">
+      <button type="button" id="btn-ranking-leagues" class="ranking-tab active">🏆 Ligue</button>
+      <button type="button" id="btn-ranking-medals" class="ranking-tab">🏅 Médailles</button>
+    </div>
+  </div>
+</div>
 
 <!-- ===================== PANNEAU SAISON / MEDAILLES ===================== -->
 <div id="panel-season" class="panel">

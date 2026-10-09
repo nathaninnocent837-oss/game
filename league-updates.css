@@ -1,0 +1,28 @@
+/* Compléments visuels pour les classements TRUGO.
+   Le fichier style.css existant reste prioritaire pour le reste du jeu. */
+.hud-top-left { display:flex; align-items:center; gap:clamp(6px,1.2vw,14px); flex-wrap:wrap; }
+.medal-counter, .league-ranking-btn {
+  min-height:42px; display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  padding:8px 13px; border:1px solid rgba(255,255,255,.24); border-radius:12px;
+  color:#fff; background:rgba(8,14,30,.78); font:700 14px 'Rajdhani',sans-serif;
+  cursor:pointer; backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+}
+.medal-counter { color:#ffe39a; border-color:rgba(255,203,82,.45); }
+.league-ranking-btn { position:relative; isolation:isolate; border-color:#f6d77a; background:linear-gradient(120deg,#25164c,#7042a8,#25164c); background-size:220% 220%; animation:rankingGlow 2.6s ease-in-out infinite, rankingShimmer 5s linear infinite; box-shadow:0 0 9px rgba(187,119,255,.65),0 0 22px rgba(255,202,90,.3); }
+.league-ranking-btn::after { content:""; position:absolute; inset:-4px; z-index:-1; border-radius:15px; border:1px solid rgba(255,224,142,.55); filter:blur(3px); animation:rankingHalo 2s ease-in-out infinite; }
+.league-ranking-btn span { letter-spacing:1.2px; }
+@keyframes rankingGlow { 0%,100% { box-shadow:0 0 8px rgba(187,119,255,.5),0 0 16px rgba(255,202,90,.22); } 50% { box-shadow:0 0 15px rgba(187,119,255,.95),0 0 30px rgba(255,202,90,.65); } }
+@keyframes rankingShimmer { 0% { background-position:0% 50%; } 100% { background-position:220% 50%; } }
+@keyframes rankingHalo { 0%,100% { opacity:.35; } 50% { opacity:1; } }
+.ranking-panel { width:min(620px,94vw); max-height:min(82vh,720px); display:flex; flex-direction:column; }
+.ranking-board-wrap { min-height:120px; overflow:auto; padding:6px 2px 12px; }
+.ranking-list { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:8px; }
+.ranking-list li { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 14px; border:1px solid rgba(255,255,255,.11); border-radius:10px; background:rgba(255,255,255,.045); color:#f7f8ff; }
+.ranking-list li.me { border-color:rgba(255,211,100,.65); background:rgba(255,195,70,.11); }
+.ranking-player-name { min-width:0; overflow-wrap:anywhere; font-weight:700; }
+.ranking-player-stats { flex-shrink:0; color:var(--rank-league-color,#ffe39a); font-weight:700; text-align:right; }
+.ranking-tabs { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding-top:12px; margin-top:auto; border-top:1px solid rgba(255,255,255,.12); }
+.ranking-tab { min-height:46px; border:1px solid rgba(255,255,255,.2); border-radius:10px; color:#e8eaf5; background:rgba(255,255,255,.06); font:700 15px 'Rajdhani',sans-serif; cursor:pointer; }
+.ranking-tab.active { color:#fff; border-color:#f3cf75; background:linear-gradient(120deg,rgba(126,78,191,.7),rgba(187,128,255,.28)); box-shadow:0 0 14px rgba(177,111,255,.25); }
+@media (max-width:560px) { .hud-top-left { gap:5px; } .medal-counter,.league-ranking-btn { min-height:36px; padding:6px 8px; font-size:12px; } .league-ranking-btn span { letter-spacing:.5px; } .ranking-list li { padding:10px; font-size:13px; } }
+@media (prefers-reduced-motion:reduce) { .league-ranking-btn,.league-ranking-btn::after { animation:none; } }
