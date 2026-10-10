@@ -1,4 +1,3 @@
-
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const pool = require("../db");
@@ -36,14 +35,12 @@ router.post("/register", async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    
-const result = await pool.query(
-  `INSERT INTO users (username, password_hash)
-   VALUES ($1, $2)
-   RETURNING id, username, created_at`,
-  [username, passwordHash]
-);
-
+    const result = await pool.query(
+      `INSERT INTO users (username, password_hash)
+       VALUES ($1, $2)
+       RETURNING id, username, created_at`,
+      [username, passwordHash]
+    );
 
     req.session.userId = result.rows[0].id;
 
@@ -104,7 +101,6 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    // Renouvelle l'identifiant de session après connexion.
     req.session.regenerate((err) => {
       if (err) {
         console.error("Erreur session :", err.message);
@@ -195,4 +191,8 @@ router.post("/logout", (req, res) => {
 
     return res.json({
       message: "Déconnexion réussie."
-    })
+    });
+  });
+});
+
+module.exports = router;
