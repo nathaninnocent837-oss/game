@@ -1,3 +1,4 @@
+
 const session = require("express-session");
 const PgSession = require("connect-pg-simple")(session);
 const pool = require("./db");
@@ -7,11 +8,10 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const sessionSecret = process.env.SESSION_SECRET || "dev-session-secret-change-me";
-
-if (!process.env.SESSION_SECRET) {
-  console.warn("⚠️ SESSION_SECRET non défini. Utilisation d'une clé de secours pour le développement.");
+if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) {
+  throw new Error("La variable SESSION_SECRET doit être définie en production.");
 }
+
 
 app.set("trust proxy", 1);
 
@@ -25,7 +25,7 @@ app.use(
       tableName: "user_sessions",
       createTableIfMissing: true
     }),
-    secret: sessionSecret,
+    secret: process.env.SESSION_SECRET || "trugo-dev-only-change-this-secret",
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -38,7 +38,7 @@ app.use(
 );
 
 app.use("/api/auth", require("./routes/auth"));
-// app.use("/api/friends", require("./routes/friends"));
+app.use("/api/friends", require("./routes/friends"));
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));

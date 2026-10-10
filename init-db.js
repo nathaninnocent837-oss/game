@@ -1,27 +1,24 @@
-const fs = require("node:fs");
-const path = require("node:path");
 const pool = require("./db");
 
-async function initializeDatabase() {
+async function init() {
   try {
-    const schemaPath = path.join(
-      __dirname,
-      "sql",
-      "schema.sql"
-    );
-
-    const schema = fs.readFileSync(schemaPath, "utf8");
-
-    await pool.query(schema);
-
-    console.log("Schema PostgreSQL initialise avec succes.");
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id BIGSERIAL PRIMARY KEY,
+        username VARCHAR(30) NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_unique
+        ON users (LOWER(username));
+    `);
+    console.log("Base TRUGO initialisée.");
+  } catch (error) {
+    console.error("Échec de l'initialisation PostgreSQL :", error.message);
+    process.exitCode = 1;
   } finally {
     await pool.end();
   }
 }
 
-initializeDatabase().catch((error) => {
-  console.error("Echec de l'initialisation PostgreSQL.");
-  console.error(error.message);
-  process.exitCode = 1;
-});
+init();

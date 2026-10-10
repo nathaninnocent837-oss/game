@@ -537,10 +537,19 @@ function runLoadingSequence(){
       pct = 100;
       fill.style.width = '100%';
       clearInterval(timer);
-      setTimeout(()=>{
-        if (APP.username){
+      setTimeout(async ()=>{
+        // Le nom en localStorage ne suffit pas : on vérifie la session serveur.
+        try {
+          const response = await fetch('/api/auth/me', { credentials: 'same-origin' });
+          if (!response.ok) throw new Error('Session absente');
+          const data = await response.json();
+          APP.username = data.user.username;
+          APP.userId = data.user.id;
+          Store.save('trugo_username', APP.username);
           enterLobby();
-        } else {
+        } catch (_) {
+          APP.username = null;
+          APP.userId = null;
           showScreen('screen-login');
         }
       }, 250);
@@ -554,26 +563,47 @@ function runLoadingSequence(){
 /* ---------------------------------------------------------
    CONNEXION
 --------------------------------------------------------- */
-document.getElementById('login-form').addEventListener('submit', async (e)=>{
+let authMode = 'login';
+const loginForm = document.getElementById('login-form');
+const authSubmit = loginForm.querySelector('button[type="submit"],button');
+const authToggle = document.createElement('button');
+authToggle.type = 'button';
+authToggle.className = 'btn-secondary';
+authToggle.style.marginTop = '.65rem';
+authToggle.style.width = '100%';
+authToggle.textContent = 'Créer un compte';
+loginForm.appendChild(authToggle);
+authToggle.addEventListener('click', () => {
+  authMode = authMode === 'login' ? 'register' : 'login';
+  authSubmit.textContent = authMode === 'register' ? 'Créer mon compte' : 'Se connecter';
+  authToggle.textContent = authMode === 'register' ? 'J’ai déjà un compte' : 'Créer un compte';
+  const note = loginForm.querySelector('.field-note');
+  if (note) note.textContent = authMode === 'register'
+    ? 'Choisis un pseudo de 3 à 30 caractères et un mot de passe de 10 caractères minimum.'
+    : 'Connecte-toi à ton compte TRUGO pour retrouver tes amis et tes statistiques.';
+});
+
+loginForm.addEventListener('submit', async (e)=>{
   e.preventDefault(); AudioEngine.unlock();
   const name=document.getElementById('login-name').value.trim();
   const pass=document.getElementById('login-pass').value;
   if(!name||!pass)return;
-  const submit=e.currentTarget.querySelector('button[type="submit"],button');
-  if(submit)submit.disabled=true;
+  if(authSubmit)authSubmit.disabled=true;
   try{
-    const response=await fetch('/api/auth/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name,password:pass})});
+    const endpoint = authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
+    const response=await fetch(endpoint,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name,password:pass})});
     const data=await response.json();
-    if(!response.ok)throw new Error(data.error||'Connexion impossible.');
+    if(!response.ok)throw new Error(data.error|| (authMode === 'register' ? 'Création du compte impossible.' : 'Connexion impossible.'));
     APP.username=data.user.username; APP.userId=data.user.id;
-    Store.save('trugo_username',APP.username); enterLobby();
+    Store.save('trugo_username',APP.username);
+    const errorNote=document.getElementById('auth-error'); if(errorNote)errorNote.remove();
+    enterLobby();
   }catch(err){
     let note=document.getElementById('auth-error');
-    if(!note){note=document.createElement('p');note.id='auth-error';note.className='social-message';e.currentTarget.appendChild(note);}
+    if(!note){note=document.createElement('p');note.id='auth-error';note.className='social-message error';loginForm.appendChild(note);}
     note.textContent=err.message||'Serveur inaccessible.';
-  }finally{if(submit)submit.disabled=false;}
+  }finally{if(authSubmit)authSubmit.disabled=false;}
 });
-
 function enterLobby(){
   document.getElementById('lobby-username').textContent = APP.username;
   setTimeout(socialHeartbeat, 500);
@@ -1553,8 +1583,9 @@ const Match = (()=>{
       const d = Math.hypot(dx,dy);
       if (d > maxDist){ dx = dx/d*maxDist; dy = dy/d*maxDist; }
       knob.style.transform = `translate(${dx}px, ${dy}px)`;
-      joystickVec.x = dx / maxDist;
-      joystickVec.y = dy / maxDist;
+      const sensitivity = 0.65;
+      joystickVec.x = (dx / maxDist) * sensitivity;
+      joystickVec.y = (dy / maxDist) * sensitivity;
     }
     function resetKnob(){
       knob.style.transform = 'translate(0,0)';
@@ -2124,6 +2155,8 @@ const Match = (()=>{
       });
       pendingLeagueReveal = { index: leagueIndexForKills(playerKills), kills: playerKills };
       Store.save('trugo_league', pendingLeagueReveal.index);
+      APP.league = pendingLeagueReveal.index;
+      socialHeartbeat();
       if (note) note.textContent = 'Ta ligue sera annoncée au retour au lobby…';
     } else {
       if (titleEl) titleEl.textContent = 'Partie terminée';
@@ -2144,6 +2177,7 @@ const Match = (()=>{
 
       APP.points = Math.max(0, APP.points + playerDelta);
       Store.save('trugo_points', APP.points);
+      socialHeartbeat();
       if (note){
         const deltaLabel = playerDelta > 0 ? `+${playerDelta}` : `${playerDelta}`;
         note.textContent = `${deltaLabel} médailles — total : ${APP.points} médailles. Retour au lobby…`;
