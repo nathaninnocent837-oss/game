@@ -494,3 +494,19 @@ html,body{
   color:var(--league-color,#fff); text-shadow:0 0 18px var(--league-color,#fff), 0 0 46px var(--league-color,#fff);
 }
 .league-reveal-kills{ font-size:.9rem; color:var(--text-dim); margin-top:.3rem; }
+
+/* ============ AMIS EN LIGNE — cartes sociales ============ */
+.social-message{margin:0 0 .8rem;padding:.7rem .85rem;border:1px solid rgba(69,214,196,.35);border-radius:10px;background:rgba(69,214,196,.08);color:var(--teal);font-size:.85rem;line-height:1.4}
+.social-message.error{border-color:rgba(255,92,104,.45);background:rgba(255,92,104,.08);color:#ff9ba3}
+.friend-list li.friend-card{gap:.7rem;padding:.7rem .8rem;background:linear-gradient(135deg,rgba(25,37,50,.96),rgba(13,20,32,.96));border-color:#2c4051;transition:border-color .18s,transform .18s}
+.friend-list li.friend-card:hover{border-color:var(--teal);transform:translateY(-1px)}
+.friend-info{display:flex;flex:1;min-width:0;flex-direction:column;gap:.22rem}
+.friend-info strong{overflow-wrap:anywhere;color:var(--text);font-weight:650}
+.friend-status{font-size:.72rem;letter-spacing:.02em}
+.friend-status.online{color:var(--teal)}
+.friend-status.offline{color:var(--text-dim)}
+.friend-list li.friend-card button{flex-shrink:0;padding:.45rem .7rem;background:linear-gradient(135deg,#45d6c4,#79f0dc);box-shadow:0 4px 14px #45d6c420}
+.friend-list li.friend-card button:disabled{background:#263440;color:#91a3b2;box-shadow:none;cursor:default}
+.friend-list li.friend-card button.friend-remove{background:#30202a;color:#ff9ba3;box-shadow:none;border:1px solid #55303b}
+#friends-search{transition:border-color .2s,box-shadow .2s}
+#friends-search:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px #45d6c420}

@@ -223,6 +223,8 @@ const DEMO_LEAGUE_PLAYERS = [
   { name:'ZedArrow', league:0, medals:180 }
 ];
 let activeRankingTab = 'leagues';
+let serverLeaderboard = null;
+let leaderboardLoading = false;
 
 function openRankings(tab='leagues'){
   activeRankingTab = tab;
@@ -230,21 +232,31 @@ function openRankings(tab='leagues'){
   openPanel('panel-rankings');
 }
 function renderRankings(){
+  if (!serverLeaderboard && !leaderboardLoading) {
+    leaderboardLoading = true;
+    fetch('/api/friends/leaderboard',{credentials:'same-origin'})
+      .then(r=>r.ok?r.json():Promise.reject(new Error('Classement indisponible')))
+      .then(data=>{serverLeaderboard=data.players||[];renderRankings();})
+      .catch(()=>{})
+      .finally(()=>{leaderboardLoading=false;});
+  }
   const list = document.getElementById('ranking-list');
   const title = document.getElementById('ranking-panel-title');
   const description = document.getElementById('ranking-panel-description');
   if (!list || !title || !description) return;
   const player = { name: APP.username || 'Toi', league: Math.max(0, Math.min(LEAGUES.length-1, Number(APP.league) || 0)), medals: Number(APP.points) || 0, isPlayer:true };
   const others = DEMO_LEAGUE_PLAYERS.filter(p => p.name.toLowerCase() !== String(APP.username || '').toLowerCase());
-  let entries = [...others, player];
+  let entries = serverLeaderboard && serverLeaderboard.length
+    ? serverLeaderboard.map(p=>({name:p.username,league:Number(p.league)||0,medals:Number(p.points)||0,isPlayer:String(p.username).toLowerCase()===String(APP.username||'').toLowerCase()}))
+    : [...others, player];
   if (activeRankingTab === 'medals') {
     entries.sort((a,b) => b.medals-a.medals || b.league-a.league);
     title.textContent = 'Classement des médailles';
-    description.textContent = 'Classement par nombre de médailles de la saison. Les joueurs affichés sont des exemples en mode démo.';
+    description.textContent = 'Classement réel des comptes enregistrés, selon leurs points de saison.';
   } else {
     entries.sort((a,b) => b.league-a.league || b.medals-a.medals);
     title.textContent = 'Classement des ligues';
-    description.textContent = 'Classement par ligue, puis par médailles. Les joueurs affichés sont des exemples en mode démo.';
+    description.textContent = 'Classement des comptes enregistrés par ligue, puis par points.';
   }
   list.replaceChildren();
   entries.forEach((entry,index)=>{
@@ -542,20 +554,29 @@ function runLoadingSequence(){
 /* ---------------------------------------------------------
    CONNEXION
 --------------------------------------------------------- */
-document.getElementById('login-form').addEventListener('submit', (e)=>{
-  e.preventDefault();
-  AudioEngine.unlock();
-  const name = document.getElementById('login-name').value.trim();
-  const pass = document.getElementById('login-pass').value;
-  if (!name || !pass) return;
-  APP.username = name;
-  Store.save('trugo_username', name);
-  // Le mot de passe n'est pas transmis à un serveur : il n'y en a pas encore.
-  enterLobby();
+document.getElementById('login-form').addEventListener('submit', async (e)=>{
+  e.preventDefault(); AudioEngine.unlock();
+  const name=document.getElementById('login-name').value.trim();
+  const pass=document.getElementById('login-pass').value;
+  if(!name||!pass)return;
+  const submit=e.currentTarget.querySelector('button[type="submit"],button');
+  if(submit)submit.disabled=true;
+  try{
+    const response=await fetch('/api/auth/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name,password:pass})});
+    const data=await response.json();
+    if(!response.ok)throw new Error(data.error||'Connexion impossible.');
+    APP.username=data.user.username; APP.userId=data.user.id;
+    Store.save('trugo_username',APP.username); enterLobby();
+  }catch(err){
+    let note=document.getElementById('auth-error');
+    if(!note){note=document.createElement('p');note.id='auth-error';note.className='social-message';e.currentTarget.appendChild(note);}
+    note.textContent=err.message||'Serveur inaccessible.';
+  }finally{if(submit)submit.disabled=false;}
 });
 
 function enterLobby(){
   document.getElementById('lobby-username').textContent = APP.username;
+  setTimeout(socialHeartbeat, 500);
   updateLeagueUI();
   showScreen('screen-lobby');
   Lobby.start();
@@ -618,61 +639,55 @@ document.querySelectorAll('.equipment-card').forEach(card=>{
 });
 
 /* ---------------------------------------------------------
-   PANNEAU AMIS (simulation locale)
+   PANNEAU AMIS — comptes réels, demandes et présence PostgreSQL
 --------------------------------------------------------- */
-const SUGGESTED_PLAYERS = ['Raven92','NyxBlade','KatoStorm','VexOni','JunoFang','MiloSprint','ZedArrow','AshVane'];
-
-function renderFriendsMine(){
-  const ul = document.getElementById('friends-mine');
-  ul.innerHTML = '';
-  if (APP.friends.length === 0){
-    ul.innerHTML = '<li class="empty">Aucun ami pour l\'instant</li>';
-    return;
-  }
-  APP.friends.forEach(name=>{
-    const li = document.createElement('li');
-    li.innerHTML = `<span>${escapeHtml(name)}</span>`;
-    ul.appendChild(li);
-  });
+async function socialRequest(url,options={}){
+ const r=await fetch(url,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});
+ const d=await r.json().catch(()=>({}));
+ if(!r.ok)throw new Error(d.error||'Action impossible.'); return d;
 }
-function renderFriendsResults(query){
-  const ul = document.getElementById('friends-results');
-  ul.innerHTML = '';
-  const q = query.trim().toLowerCase();
-  if (!q){ return; }
-  const matches = SUGGESTED_PLAYERS.filter(n => n.toLowerCase().includes(q) && n !== APP.username);
-  if (matches.length === 0){
-    ul.innerHTML = '<li class="empty">Aucun joueur trouvé</li>';
-    return;
-  }
-  matches.forEach(name=>{
-    const li = document.createElement('li');
-    const already = APP.friends.includes(name);
-    li.innerHTML = `<span>${escapeHtml(name)}</span>`;
-    const btn = document.createElement('button');
-    btn.textContent = already ? 'Ajouté' : 'Ajouter';
-    btn.disabled = already;
-    btn.addEventListener('click', ()=>{
-      if (!APP.friends.includes(name)){
-        APP.friends.push(name);
-        Store.save('trugo_friends', APP.friends);
-        renderFriendsMine();
-        renderFriendsResults(document.getElementById('friends-search').value);
-      }
-    });
-    li.appendChild(btn);
-    ul.appendChild(li);
-  });
+function socialMessage(message,error=false){
+ let el=document.getElementById('friends-message');
+ if(!el){el=document.createElement('p');el.id='friends-message';el.className='social-message';document.querySelector('#panel-friends .panel-inner')?.prepend(el);}
+ el.textContent=message;el.classList.toggle('error',error);
 }
-document.getElementById('btn-friends').addEventListener('click', ()=>{
-  document.getElementById('friends-search').value = '';
-  document.getElementById('friends-results').innerHTML = '';
-  renderFriendsMine();
-  openPanel('panel-friends');
-});
-document.getElementById('friends-search').addEventListener('input', (e)=>{
-  renderFriendsResults(e.target.value);
-});
+function renderFriendRows(target,rows,mode){
+ target.replaceChildren();
+ if(!rows.length){const li=document.createElement('li');li.className='empty';li.textContent=mode==='mine'?'Aucun ami pour le moment — recherche un joueur ci-dessus.':'Aucun compte correspondant.';target.appendChild(li);return;}
+ rows.forEach(user=>{
+  const li=document.createElement('li');li.className='friend-card';
+  const info=document.createElement('span');info.className='friend-info';
+  const name=document.createElement('strong');name.textContent=user.username;
+  const status=document.createElement('small');status.className='friend-status '+(user.online?'online':'offline');status.textContent=user.online?'● En ligne':'○ Hors ligne';
+  info.append(name,status);li.appendChild(info);
+  const btn=document.createElement('button');
+  if(mode==='mine'&&user.status==='pending'&&String(user.requester_id)!==String(APP.userId)){
+   btn.textContent='Accepter';btn.onclick=async()=>{try{await socialRequest('/api/friends/accept/'+user.id,{method:'POST',body:'{}'});await loadFriends();}catch(e){socialMessage(e.message,true);}};
+  }else if(mode==='mine'){
+   btn.textContent=user.status==='pending'?'Annuler':'Retirer';btn.className='friend-remove';
+   btn.onclick=async()=>{try{await socialRequest('/api/friends/'+user.id,{method:'DELETE'});await loadFriends();}catch(e){socialMessage(e.message,true);}};
+  }else{
+   btn.textContent=user.relationship==='friend'?'Déjà ami':user.relationship==='sent'?'Demande envoyée':user.relationship==='received'?'Accepter':'Ajouter';
+   btn.disabled=['friend','sent'].includes(user.relationship);
+   btn.onclick=async()=>{try{await socialRequest('/api/friends/request',{method:'POST',body:JSON.stringify({username:user.username})});socialMessage('Demande envoyée à '+user.username+' ✨');await searchFriends(document.getElementById('friends-search').value);await loadFriends();}catch(e){socialMessage(e.message,true);}};
+  }
+  li.appendChild(btn);target.appendChild(li);
+ });
+}
+async function loadFriends(){try{const d=await socialRequest('/api/friends');renderFriendRows(document.getElementById('friends-mine'),d.friends.map(f=>({...f,id:f.friendship_id})),'mine');}catch(e){socialMessage(e.message,true);}}
+async function searchFriends(query){
+ const ul=document.getElementById('friends-results'),q=String(query||'').trim();
+ if(!q){ul.replaceChildren();return;}
+ try{const d=await socialRequest('/api/friends/users?q='+encodeURIComponent(q));renderFriendRows(ul,d.users,'search');}catch(e){socialMessage(e.message,true);}
+}
+document.getElementById('btn-friends').addEventListener('click',()=>{document.getElementById('friends-search').value='';document.getElementById('friends-results').replaceChildren();loadFriends();openPanel('panel-friends');});
+document.getElementById('friends-search').addEventListener('input',e=>searchFriends(e.target.value));
+async function socialHeartbeat(){
+ if(!APP.username)return;
+ try{await socialRequest('/api/friends/presence',{method:'POST',body:'{}'});await socialRequest('/api/friends/stats',{method:'POST',body:JSON.stringify({points:APP.points||0,league:APP.league||0})});if(document.getElementById('panel-friends')?.classList.contains('open'))await loadFriends();}catch(_){}
+}
+setInterval(socialHeartbeat,30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)socialHeartbeat();});
 
 function escapeHtml(s){
   return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));

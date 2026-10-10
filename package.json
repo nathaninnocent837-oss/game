@@ -1,18 +1,17 @@
-
 {
-    "name": "game",
-    "version": "1.0.0",
-    "engines": {
-        "node": ">=18"
-    },
-    "scripts": {
-        "start": "node init-db.js && node server.js"
-    },
-    "dependencies": {
-        "express": "^4.17.1",
-        "pg": "^8.23.0",
-        "bcryptjs": "^3.0.2",
+  "name": "game",
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node init-db.js && node server.js"
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "pg": "^8.23.0",
+    "bcryptjs": "^3.0.2",
     "express-session": "^1.18.2",
     "connect-pg-simple": "^10.0.0"
-    }
+  }
 }
