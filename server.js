@@ -9,6 +9,33 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+
+app.set("trust proxy", 1);
+
+app.use(express.json({ limit: "20kb" }));
+
+app.use(
+  session({
+    name: "game.sid",
+    store: new PgSession({
+      pool,
+      tableName: "user_sessions",
+      createTableIfMissing: true
+    }),
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 1000 * 60 * 60 * 24 * 7
+    }
+  })
+);
+
+app.use("/api/auth", require("./routes/auth"));
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
