@@ -88,4 +88,9 @@ FROM users u
 LEFT JOIN game_sessions gs ON gs.user_id = u.id
 GROUP BY u.id, u.username;
 
+
+ALTER TABLE users
+ALTER COLUMN email DROP NOT NULL;
+
+
 COMMIT;
