@@ -34,7 +34,7 @@ app.use(
   })
 );
 
-app.use("/api/auth", require("./jeu/itinéraires/auth"));
+app.use("/api/auth", require("./Itinéraires/auth"));
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
