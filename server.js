@@ -1,4 +1,3 @@
-
 const session = require("express-session");
 const PgSession = require("connect-pg-simple")(session);
 const pool = require("./db");
@@ -8,7 +7,11 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const sessionSecret = process.env.SESSION_SECRET || "dev-session-secret-change-me";
 
+if (!process.env.SESSION_SECRET) {
+  console.warn("⚠️ SESSION_SECRET non défini. Utilisation d'une clé de secours pour le développement.");
+}
 
 app.set("trust proxy", 1);
 
@@ -22,7 +25,7 @@ app.use(
       tableName: "user_sessions",
       createTableIfMissing: true
     }),
-    secret: process.env.SESSION_SECRET,
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     cookie: {
