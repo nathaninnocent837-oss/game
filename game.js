@@ -1035,36 +1035,44 @@ function playModeRoulette(){
   const wheel = document.getElementById('roulette-wheel');
   const resultEl = document.getElementById('roulette-result');
   if (!wheel || !resultEl){
-    // sécurité : si l'écran roulette n'existe pas, on lance directement une partie
-    Match.start(Math.random() < 0.5 ? 'frappe' : 'couronne');
+    Match.start(['frappe','couronne','maxitrone'][Math.floor(Math.random()*3)]);
     return;
   }
   resultEl.textContent = '';
 
-  const chosenMode = Math.random() < 0.5 ? 'frappe' : 'couronne';
+  // La roue classique devient une roue à 3 secteurs.
+  wheel.style.background = 'conic-gradient(#ff5c68 0deg 120deg, #45d6c4 120deg 240deg, #ffc83d 240deg 360deg)';
+  wheel.style.borderRadius = '50%';
+  wheel.style.overflow = 'hidden';
 
-  // réinitialise la roue sans transition avant de la relancer
+  let labels = wheel.querySelector('.maxitrone-wheel-labels');
+  if (!labels){
+    labels = document.createElement('div');
+    labels.className = 'maxitrone-wheel-labels';
+    labels.style.cssText = 'position:absolute;inset:0;pointer-events:none;font-weight:900;font-size:11px;text-shadow:0 2px 5px #000;color:#fff;';
+    labels.innerHTML = '<span style="position:absolute;top:17%;left:50%;transform:translateX(-50%);">FRAPPE</span>'
+      + '<span style="position:absolute;bottom:17%;left:15%;">COURONNE</span>'
+      + '<span style="position:absolute;bottom:17%;right:12%;">MAXITRONE</span>';
+    wheel.style.position = 'relative';
+    wheel.appendChild(labels);
+  }
+
+  const modes = ['frappe','couronne','maxitrone'];
+  const chosenMode = modes[Math.floor(Math.random()*modes.length)];
+  const sector = {frappe:60, couronne:180, maxitrone:300}[chosenMode] + (Math.random()*80-40);
+  const spins = 5;
+  const finalRotation = spins*360 + ((360 - ((sector+360)%360)) % 360);
+
   wheel.style.transition = 'none';
   wheel.style.transform = 'rotate(0deg)';
-  void wheel.offsetWidth; // force le recalcul de style avant de réactiver la transition
+  void wheel.offsetWidth;
   wheel.style.transition = '';
-
-  const spins = 4;
-  // milieu du demi-cercle correspondant au mode choisi (évite d'atterrir sur la frontière)
-  const targetTopAngle = chosenMode === 'frappe'
-    ? 40 + Math.random()*100    // demi-cercle "Frappe Dolling" (0°-180°)
-    : 220 + Math.random()*100;  // demi-cercle "Couronne Hunter" (180°-360°)
-  const finalRotation = spins*360 + ((360 - targetTopAngle) % 360);
-
-  requestAnimationFrame(()=>{
-    wheel.style.transform = `rotate(${finalRotation}deg)`;
-  });
+  requestAnimationFrame(()=>{ wheel.style.transform = `rotate(${finalRotation}deg)`; });
 
   setTimeout(()=>{
-    resultEl.textContent = chosenMode === 'frappe' ? 'Mode : Frappe Dolling' : 'Mode : Couronne Hunter';
-    setTimeout(()=>{
-      Match.start(chosenMode);
-    }, 900);
+    const names = {frappe:'Frappe Dolling',couronne:'Couronne Hunter',maxitrone:'Maxitrone'};
+    resultEl.textContent = `Mode : ${names[chosenMode]}`;
+    setTimeout(()=>{ Match.start(chosenMode); }, 900);
   }, 3100);
 }
 
@@ -1073,6 +1081,9 @@ function playModeRoulette(){
 --------------------------------------------------------- */
 const FRAPPE_DURATION = 4*60; // secondes (mode Frappe Dolling)
 const COURONNE_DURATION = 2*60; // secondes (mode Couronne Hunter)
+const MAXITRONE_DURATION = 4*60; // secondes (mode Maxitrone)
+const MAXITRONE_SETUP_DURATION = 60; // première minute sans combat
+const MAXITRONE_THRONE_HP = 1200;
 let MATCH_DURATION = FRAPPE_DURATION; // ajusté selon le mode choisi au lancement de la partie
 const ARENA_RADIUS = 15; // carte de 30x30 unités (diamètre = 30)
 const MAX_HP = 750;
@@ -1084,8 +1095,17 @@ const CROWN_ATTACK_RANGE = 2.2;
 const RESPAWN_DELAY = 15;
 const ATTACK_RANGE = 1.6;
 const ATTACK_COOLDOWN = 0.6;
-const TOTAL_SLOTS = 8;
-const BASE_SPEED = 6; // déplacement plus rapide et plus direct
+const TOTAL_SLOTS = 12;
+const BASE_SPEED = 4;
+const MAX_TURN_RATE = Math.PI * 2.6;
+
+function stepTowardAngle(current, target, maxStep){
+  let diff = target - current;
+  while (diff > Math.PI) diff -= Math.PI*2;
+  while (diff < -Math.PI) diff += Math.PI*2;
+  if (Math.abs(diff) <= maxStep) return target;
+  return current + Math.sign(diff) * maxStep;
+}
 const EQUIPMENT_COOLDOWN = 20; // chaque équipement revient après 20 secondes
 const ADRENALINE_DURATION = 30; // secondes
 const ADRENALINE_MIN_DELAY = 30; // secondes avant que le mode puisse s'activer
@@ -1103,9 +1123,11 @@ const Match = (()=>{
   let attackRequested = false;
   let obstacles = []; // {x,z,radius} buildings/trees for simple collision
   let dustPoints = null;
-  let currentGameMode = 'frappe'; // 'frappe' (Frappe Dolling) | 'couronne' (Couronne Hunter)
+  let currentGameMode = 'frappe'; // 'frappe' | 'couronne' | 'maxitrone'
   let currentRanked = false; // partie classée (ligue selon les éliminations)
   let crown = null; // {mesh, pedestal, hp, state:'vault'|'held', holder, holdStartedAt}
+  let maxitroneCombatStarted = false;
+  let maxitroneUiReady = false;
   let fogUntil = 0;
   let equipmentUsed = new Set();
   let equipmentCooldownUntil = new Map();
@@ -1332,19 +1354,131 @@ const Match = (()=>{
     endMatch({ winner });
   }
 
+  function ensureMaxitroneUI(){
+    if (maxitroneUiReady) return;
+    maxitroneUiReady = true;
+    const matchScreen = document.getElementById('screen-match');
+    if (!matchScreen) return;
+
+    const counter = document.createElement('div');
+    counter.id = 'maxitrone-counter';
+    counter.style.cssText = 'position:absolute;right:14px;top:78px;z-index:30;background:rgba(7,12,18,.86);border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:8px 12px;color:#fff;font-weight:900;text-align:center;display:none;min-width:118px;box-shadow:0 8px 24px rgba(0,0,0,.28);';
+    counter.innerHTML = '<div style="font-size:11px;opacity:.72;text-transform:uppercase;letter-spacing:.08em;">Joueurs restants</div><div id="maxitrone-counter-value" style="font-size:24px;line-height:1.05;margin-top:2px;">12 / 12</div>';
+    matchScreen.appendChild(counter);
+
+    const button = document.createElement('button');
+    button.id = 'btn-maxitrone-throne';
+    button.type = 'button';
+    button.textContent = '♜ Poser mon trône';
+    button.style.cssText = 'position:absolute;right:14px;bottom:118px;z-index:31;display:none;border:0;border-radius:14px;padding:12px 15px;background:linear-gradient(135deg,#ffc83d,#ff8a3d);color:#16120a;font-weight:900;box-shadow:0 8px 22px rgba(0,0,0,.3);';
+    matchScreen.appendChild(button);
+    button.addEventListener('click', ()=>placeMaxitroneThrone(getPlayer(), true));
+  }
+
+  function maxitroneIsCombatPhase(){
+    return currentGameMode === 'maxitrone' && maxitroneCombatStarted;
+  }
+
+  function updateMaxitroneCounter(){
+    const el = document.getElementById('maxitrone-counter-value');
+    if (!el || currentGameMode !== 'maxitrone') return;
+    const remaining = fighters.filter(f=>!f.permanentlyEliminated).length;
+    el.textContent = `${remaining} / ${fighters.length}`;
+  }
+
+  function makeMaxitroneThrone(owner){
+    const group = new THREE.Group();
+    const color = owner.isPlayer ? '#ffc83d' : (owner.mesh?.children?.[0]?.material?.color?.getStyle?.() || '#7c8cff');
+    const mat = new THREE.MeshStandardMaterial({color, metalness:.35, roughness:.35});
+    const dark = new THREE.MeshStandardMaterial({color:'#241b0b', metalness:.25, roughness:.5});
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(1.0,.25,.9), mat); seat.position.y=.7; group.add(seat);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(1.0,1.5,.22), mat); back.position.set(0,1.35,-.34); group.add(back);
+    const armL = new THREE.Mesh(new THREE.BoxGeometry(.18,.55,1.0), dark); armL.position.set(-.55,.95,0); group.add(armL);
+    const armR = new THREE.Mesh(new THREE.BoxGeometry(.18,.55,1.0), dark); armR.position.set(.55,.95,0); group.add(armR);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(.62,.75,.22,8), dark); base.position.y=.12; group.add(base);
+    const crown = new THREE.Mesh(new THREE.ConeGeometry(.24,.42,5), new THREE.MeshStandardMaterial({color:'#ffe27a',emissive:'#7a4d00',emissiveIntensity:.25})); crown.position.set(0,2.12,-.34); group.add(crown);
+    group.userData.ownerName = owner.name;
+    return group;
+  }
+
+  function placeMaxitroneThrone(owner, manual=false){
+    if (!owner || owner.throne || currentGameMode !== 'maxitrone' || maxitroneCombatStarted) return false;
+    const pos = manual ? {x:owner.pos.x,z:owner.pos.z} : randomSpawnPos();
+    const mesh = makeMaxitroneThrone(owner);
+    mesh.position.set(pos.x,0,pos.z);
+    scene.add(mesh);
+    owner.throne = {mesh, hp:MAXITRONE_THRONE_HP, destroyed:false, placed:true};
+    if (manual){
+      const button=document.getElementById('btn-maxitrone-throne');
+      if(button){button.disabled=true;button.textContent='♜ Trône posé';button.style.opacity='.6';}
+      setMatchStatus('Ton trône est posé. Protège-le !', 3500);
+    }
+    return true;
+  }
+
+  function notifyMaxitroneThroneDestroyed(owner){
+    const message = owner.isPlayer ? '⚠️ TON TRÔNE A ÉTÉ DÉTRUIT ! Tu ne reviendras plus après ta prochaine élimination.' : `♜ Le trône de ${owner.name} a été détruit !`;
+    setMatchStatus(message, 5000);
+    const feed=document.getElementById('elim-feed');
+    if(feed){
+      const item=document.createElement('div'); item.className='elim-item'; item.innerHTML=`<b>♜ Trône détruit</b> — ${escapeHtml(owner.name)}`; feed.appendChild(item); setTimeout(()=>item.remove(),5000);
+    }
+    if (owner.isPlayer){
+      try{ if(navigator.vibrate) navigator.vibrate([140,80,220,80,320]); }catch(_){}
+      try{ if('Notification' in window && Notification.permission === 'granted') new Notification('TRUGO — Maxitrone', {body:'Ton trône a été détruit !'}); }catch(_){}
+    }
+  }
+
+  function damageMaxitroneThrone(attacker, owner, dmg){
+    const throne=owner?.throne;
+    if(!throne || throne.destroyed || !maxitroneIsCombatPhase()) return false;
+    throne.hp=Math.max(0, throne.hp-dmg);
+    addEffect(throne.mesh.position,'#ffc83d',450);
+    if(throne.hp<=0){
+      throne.destroyed=true;
+      scene.remove(throne.mesh);
+      throne.mesh.traverse(obj=>{if(obj.geometry)obj.geometry.dispose();if(obj.material){if(Array.isArray(obj.material))obj.material.forEach(m=>m.dispose());else obj.material.dispose();}});
+      notifyMaxitroneThroneDestroyed(owner);
+    }
+    return true;
+  }
+
+  function leaveMaxitroneAfterPermanentElimination(){
+    running=false;
+    clearInterval(matchTimerInterval);
+    clearTimeout(adrenalineTimeout);
+    clearTimeout(adrenalineEndTimeout);
+    hideRespawnOverlay();
+    AudioEngine.stopCombatMusic();
+    setMatchStatus('Éliminé définitivement — retour au lobby',2500);
+    setTimeout(()=>{showScreen('screen-lobby');Lobby.start();},900);
+  }
+
   function updateModeHud(){
     const crownHud = document.getElementById('crown-hud');
     const hpWrap = document.getElementById('crown-hp-wrap');
     const holdWrap = document.getElementById('crown-hold-wrap');
     const yourRank = document.getElementById('leaderboard-yourank');
+    const maxCounter = document.getElementById('maxitrone-counter');
+    const throneButton = document.getElementById('btn-maxitrone-throne');
     if (currentGameMode === 'couronne'){
       if (crownHud) crownHud.style.display = 'block';
       if (hpWrap) hpWrap.style.display = 'block';
       if (holdWrap) holdWrap.style.display = 'none';
       if (yourRank) yourRank.style.display = 'none';
+      if (maxCounter) maxCounter.style.display = 'none';
+      if (throneButton) throneButton.style.display = 'none';
+    } else if (currentGameMode === 'maxitrone'){
+      if (crownHud) crownHud.style.display = 'none';
+      if (yourRank) yourRank.style.display = 'none';
+      if (maxCounter) maxCounter.style.display = 'block';
+      if (throneButton) throneButton.style.display = maxitroneCombatStarted ? 'none' : 'block';
+      updateMaxitroneCounter();
     } else {
       if (crownHud) crownHud.style.display = 'none';
       if (yourRank) yourRank.style.display = 'flex';
+      if (maxCounter) maxCounter.style.display = 'none';
+      if (throneButton) throneButton.style.display = 'none';
     }
   }
 
@@ -1524,6 +1658,9 @@ const Match = (()=>{
   function initFighters(){
     // retire les combattants de la partie précédente (évite l'accumulation de modèles fantômes)
     for (const old of fighters){
+      if (old.throne?.mesh){
+        try{ scene.remove(old.throne.mesh); old.throne.mesh.traverse(obj=>{ if(obj.geometry)obj.geometry.dispose(); if(obj.material){ if(Array.isArray(obj.material))obj.material.forEach(m=>m.dispose()); else obj.material.dispose(); } }); }catch(_){}
+      }
       if (old.mesh){
         scene.remove(old.mesh);
         old.mesh.traverse(obj=>{
@@ -1549,7 +1686,7 @@ const Match = (()=>{
       hp: MAX_HP, kills:0, alive:true,
       pos: playerPos, rotY:0, mesh: playerMeshData.group, sword: playerMeshData.sword, healthBar: playerMeshData.healthBar,
       cape: playerMeshData.cape, capePhase: Math.random()*10,
-      attackCooldown:0, respawnAt:0
+      attackCooldown:0, respawnAt:0, throne:null, permanentlyEliminated:false
     });
     updateHealthBar(fighters[0]);
 
@@ -1569,10 +1706,16 @@ const Match = (()=>{
         hp: MAX_HP, kills:0, alive:true,
         pos, rotY: Math.random()*Math.PI*2, mesh: meshData.group, sword: meshData.sword, healthBar: meshData.healthBar,
         cape: meshData.cape, capePhase: Math.random()*10,
-        attackCooldown: Math.random()*ATTACK_COOLDOWN, respawnAt:0,
+        attackCooldown: Math.random()*ATTACK_COOLDOWN, respawnAt:0, throne:null, permanentlyEliminated:false,
         wanderAngle: Math.random()*Math.PI*2, wanderTimer: Math.random()*3
       });
       updateHealthBar(fighters[fighters.length - 1]);
+    }
+    if (currentGameMode === 'maxitrone'){
+      for (const bot of fighters){
+        if (bot.isBot) placeMaxitroneThrone(bot, false);
+      }
+      updateMaxitroneCounter();
     }
   }
 
@@ -1624,7 +1767,7 @@ const Match = (()=>{
       const d = Math.hypot(dx,dy);
       if (d > maxDist){ dx = dx/d*maxDist; dy = dy/d*maxDist; }
       knob.style.transform = `translate(${dx}px, ${dy}px)`;
-      const sensitivity = 1.0;
+      const sensitivity = 0.65;
       joystickVec.x = (dx / maxDist) * sensitivity;
       joystickVec.y = (dy / maxDist) * sensitivity;
     }
@@ -1784,14 +1927,15 @@ const Match = (()=>{
       const moveX = joystickVec.x, moveZ = joystickVec.y;
       const mag = Math.hypot(moveX, moveZ);
       if (mag > 0.12){
-        // Commande DIRECTE : le joystick correspond à l'écran/la carte.
-        // Droite = déplacement vers la droite, gauche = vers la gauche,
-        // haut = vers le haut de la carte, bas = vers le bas.
-        // Le personnage ne tourne JAMAIS avec le joystick.
-        const worldX = moveX;
-        const worldZ = moveZ;
+        // Même contrôle qu'avant, mais les directions sont inversées.
+        const moveForward = moveZ;
+        const moveRight = -moveX;
+        const worldX = camDirX*moveForward + camDirZ*moveRight;
+        const worldZ = camDirZ*moveForward - camDirX*moveRight;
         const speed = BASE_SPEED * speedMultiplier;
         tryMove(f, worldX*speed*dt, worldZ*speed*dt);
+        const targetRot = Math.atan2(worldX, worldZ);
+        f.rotY = stepTowardAngle(f.rotY, targetRot, MAX_TURN_RATE*dt);
       }
       if (attackRequested && f.attackCooldown <= 0){
         performAttack(f);
@@ -1828,6 +1972,38 @@ const Match = (()=>{
       if (f.wanderTimer <= 0){ f.wanderAngle = Math.random()*Math.PI*2; f.wanderTimer = 1+Math.random()*2; }
       tryMove(f, Math.sin(f.wanderAngle)*wanderSpeed*dt, Math.cos(f.wanderAngle)*wanderSpeed*dt);
       f.rotY = f.wanderAngle;
+      return;
+    }
+
+    // ---- Maxitrone : aucune attaque pendant la première minute ----
+    if (currentGameMode === 'maxitrone'){
+      const speed = BASE_SPEED * speedMultiplier;
+      if (!maxitroneCombatStarted){
+        f.wanderTimer -= dt;
+        if (f.wanderTimer <= 0){ f.wanderAngle=Math.random()*Math.PI*2; f.wanderTimer=1+Math.random()*2; }
+        tryMove(f,Math.sin(f.wanderAngle)*speed*0.35*dt,Math.cos(f.wanderAngle)*speed*0.35*dt);
+        f.rotY=f.wanderAngle;
+        return;
+      }
+      let target=null,best=Infinity;
+      for(const other of fighters){
+        if(other===f || !other.alive || other.permanentlyEliminated) continue;
+        const d=dist2(f.pos.x,f.pos.z,other.pos.x,other.pos.z); if(d<best){best=d;target=other;}
+      }
+      let throneOwner=null,throneBest=Infinity;
+      for(const other of fighters){
+        if(other===f || other.permanentlyEliminated || !other.throne || other.throne.destroyed) continue;
+        const d=dist2(f.pos.x,f.pos.z,other.throne.mesh.position.x,other.throne.mesh.position.z); if(d<throneBest){throneBest=d;throneOwner=other;}
+      }
+      const targetIsThrone = throneOwner && (!target || throneBest < best);
+      const tx = targetIsThrone ? throneOwner.throne.mesh.position.x : target?.pos.x;
+      const tz = targetIsThrone ? throneOwner.throne.mesh.position.z : target?.pos.z;
+      if(tx != null){
+        const dx=tx-f.pos.x,dz=tz-f.pos.z,d=Math.hypot(dx,dz)||1;
+        if(d>ATTACK_RANGE*0.85) tryMove(f,dx/d*speed*dt,dz/d*speed*dt);
+        else if(f.attackCooldown<=0){ performAttack(f); f.attackCooldown=ATTACK_COOLDOWN+Math.random()*0.4; }
+        f.rotY=Math.atan2(dx,dz);
+      }
       return;
     }
 
@@ -1906,33 +2082,59 @@ const Match = (()=>{
   }
 
   function performAttack(attacker){
+    if (attacker.isPlayer && currentGameMode === 'maxitrone' && !maxitroneCombatStarted){
+      setMatchStatus('Pas de combat pendant la première minute !', 1300);
+      return;
+    }
     if (attacker.sword){
       attacker.sword.rotation.z = -1.6;
       setTimeout(()=>{ if (attacker.sword) attacker.sword.rotation.z = -0.4; }, 150);
     }
+
+    if (currentGameMode === 'maxitrone' && maxitroneIsCombatPhase()) {
+      let target = null, best = ATTACK_RANGE + 0.001;
+      for (const candidate of fighters){
+        if (candidate === attacker || !candidate.alive || candidate.permanentlyEliminated) continue;
+        const d=Math.hypot(candidate.pos.x-attacker.pos.x,candidate.pos.z-attacker.pos.z);
+        if(d<best){best=d;target=candidate;}
+      }
+      if(target){
+        const angleToTarget=Math.atan2(target.pos.x-attacker.pos.x,target.pos.z-attacker.pos.z);
+        let diff=Math.abs(angleToTarget-attacker.rotY); diff=Math.min(diff,Math.PI*2-diff);
+        if(diff<1.3){ applyDamage(attacker,target,DAMAGE); return; }
+      }
+      let throneOwner=null; best=ATTACK_RANGE+0.001;
+      for(const candidate of fighters){
+        if(candidate===attacker || candidate.permanentlyEliminated || !candidate.throne || candidate.throne.destroyed) continue;
+        const d=Math.hypot(candidate.throne.mesh.position.x-attacker.pos.x,candidate.throne.mesh.position.z-attacker.pos.z);
+        if(d<best){best=d;throneOwner=candidate;}
+      }
+      if(throneOwner){
+        const angle=Math.atan2(throneOwner.throne.mesh.position.x-attacker.pos.x,throneOwner.throne.mesh.position.z-attacker.pos.z);
+        let diff=Math.abs(angle-attacker.rotY); diff=Math.min(diff,Math.PI*2-diff);
+        if(diff<1.3) damageMaxitroneThrone(attacker,throneOwner,DAMAGE);
+      }
+      return;
+    }
+
     for (const target of fighters){
       if (target === attacker || !target.alive) continue;
       const d = Math.hypot(target.pos.x-attacker.pos.x, target.pos.z-attacker.pos.z);
       if (d <= ATTACK_RANGE){
-        // doit être globalement face à la cible
         const angleToTarget = Math.atan2(target.pos.x-attacker.pos.x, target.pos.z-attacker.pos.z);
         let diff = Math.abs(angleToTarget - attacker.rotY);
         diff = Math.min(diff, Math.PI*2-diff);
-        if (diff < 1.3){
-          applyDamage(attacker, target, DAMAGE);
-        }
+        if (diff < 1.3) applyDamage(attacker, target, DAMAGE);
       }
     }
-    // Couronne Hunter : la couronne posée au centre peut aussi être frappée tant qu'elle n'est pas prise
     if (currentGameMode === 'couronne' && crown && crown.state === 'vault'){
       const cd = Math.hypot(crown.mesh.position.x - attacker.pos.x, crown.mesh.position.z - attacker.pos.z);
-      if (cd <= CROWN_ATTACK_RANGE){
-        damageCrown(attacker, CROWN_DAMAGE);
-      }
+      if (cd <= CROWN_ATTACK_RANGE) damageCrown(attacker, CROWN_DAMAGE);
     }
   }
 
   function applyDamage(attacker, target, dmg){
+    if (currentGameMode === 'maxitrone' && !maxitroneCombatStarted) return;
     target.hp -= dmg;
     updateHealthBar(target);
     addEffect(target.pos, '#ff5c68', 450);
@@ -1944,18 +2146,28 @@ const Match = (()=>{
   }
 
   function eliminate(attacker, target){
+    if (!target.alive || target.permanentlyEliminated) return;
     target.alive = false;
     target.hp = 0;
     target.mesh.visible = false;
     attacker.kills += 1;
     pushElimFeed(attacker.name, target.name);
     updateLeaderboard();
-    // cloche d'élimination, puis l'annonce vocale à CHAQUE élimination (sans son de foule,
-    // et sans annuler une annonce précédente : chaque appel est indépendant et se met en
-    // file d'attente au lieu de couper la précédente)
+
+    // Son d'élimination à chaque élimination, y compris en Maxitrone définitif.
     AudioEngine.playEliminationSound();
     setTimeout(()=>{ AudioEngine.speak('Eliminated member'); }, 400);
 
+    if (currentGameMode === 'maxitrone' && target.throne?.destroyed){
+      target.permanentlyEliminated = true;
+      target.respawnAt = 0;
+      updateMaxitroneCounter();
+      if (target.isPlayer){
+        hideRespawnOverlay();
+        leaveMaxitroneAfterPermanentElimination();
+      }
+      return;
+    }
     // Couronne Hunter : si la victime portait la couronne, elle passe à son tueur
     if (currentGameMode === 'couronne' && crown && crown.state === 'held' && crown.holder === target){
       claimCrown(attacker);
@@ -1971,11 +2183,19 @@ const Match = (()=>{
   function scheduleRespawn(f){
     setTimeout(()=>{
       if (!running) return;
+      if (f.permanentlyEliminated || (currentGameMode === 'maxitrone' && f.throne?.destroyed)){
+        f.permanentlyEliminated = true;
+        if (f.isPlayer) leaveMaxitroneAfterPermanentElimination();
+        updateMaxitroneCounter();
+        return;
+      }
       const pos = randomSpawnPos();
       f.pos = pos;
       f.hp = adrenalineActive ? 1 : MAX_HP;
       f.alive = true;
       f.mesh.visible = true;
+      f.permanentlyEliminated = false;
+      if (currentGameMode === 'maxitrone') updateMaxitroneCounter();
       updateHealthBar(f);
       setAdrenalineTint(f, adrenalineActive);
       if (f.isPlayer){
@@ -2111,6 +2331,7 @@ const Match = (()=>{
       li.innerHTML = `<span>${escapeHtml(f.name)}</span><span>${f.kills}</span>`;
       list.appendChild(li);
     });
+    if (currentGameMode === 'maxitrone') updateMaxitroneCounter();
     if (currentGameMode === 'frappe'){
       const yourRankEl = document.getElementById('yourank-value');
       if (yourRankEl){
@@ -2141,6 +2362,10 @@ const Match = (()=>{
     updateEquipmentCooldowns();
     if (fogVisual){ const p=getPlayer(); if(p){ fogVisual.position.set(p.pos.x,1.5,p.pos.z); fogVisual.rotation.y += dt*0.15; } }
     if (currentGameMode === 'couronne' && crown) updateCrownState(dt);
+    if (currentGameMode === 'maxitrone'){
+      for (const f of fighters){ if(f.throne && !f.throne.destroyed) f.throne.mesh.rotation.y += dt*0.15; }
+      updateMaxitroneCounter();
+    }
     if (dustPoints) dustPoints.rotation.y += dt * 0.03;
     attackRequested = false;
     updateCamera();
@@ -2160,6 +2385,14 @@ const Match = (()=>{
     matchTimerInterval = setInterval(()=>{
       timeLeft -= 1;
       document.getElementById('match-timer').textContent = formatTime(timeLeft);
+      if (currentGameMode === 'maxitrone' && !maxitroneCombatStarted && timeLeft <= MATCH_DURATION - MAXITRONE_SETUP_DURATION){
+        maxitroneCombatStarted = true;
+        AudioEngine.playChurchBell();
+        setMatchStatus('⚔️ COMBAT ! Les trônes peuvent maintenant être attaqués.', 6000);
+        const button=document.getElementById('btn-maxitrone-throne');
+        if(button) button.style.display='none';
+        updateModeHud();
+      }
       if (!lastMinuteTriggered && timeLeft === 60){
         lastMinuteTriggered = true;
         AudioEngine.playChurchBell();
@@ -2174,14 +2407,19 @@ const Match = (()=>{
   }
 
   function start(mode, ranked){
-    currentGameMode = mode === 'couronne' ? 'couronne' : 'frappe';
+    currentGameMode = mode === 'couronne' ? 'couronne' : mode === 'maxitrone' ? 'maxitrone' : 'frappe';
     currentRanked = !!ranked && currentGameMode === 'frappe';
-    MATCH_DURATION = currentGameMode === 'couronne' ? COURONNE_DURATION : FRAPPE_DURATION;
+    MATCH_DURATION = currentGameMode === 'couronne' ? COURONNE_DURATION : currentGameMode === 'maxitrone' ? MAXITRONE_DURATION : FRAPPE_DURATION;
+    maxitroneCombatStarted = false;
+    ensureMaxitroneUI();
 
     showScreen('screen-match');
     if (!renderer) init();
     initFighters();
     removeCrownObjects();
+    const maxBtn=document.getElementById('btn-maxitrone-throne');
+    if(maxBtn){maxBtn.disabled=false;maxBtn.textContent='♜ Poser mon trône';maxBtn.style.opacity='1';}
+
     if (currentGameMode === 'couronne') spawnCrown();
     updateModeHud();
     updateHpUI(MAX_HP);
@@ -2202,7 +2440,7 @@ const Match = (()=>{
     speedMultiplier = 1;
     document.getElementById('adrenaline-overlay').classList.remove('show');
     document.getElementById('adrenaline-banner').classList.remove('show');
-    if (currentGameMode === 'frappe') scheduleAdrenaline(); // pas de mode adrénaline en Couronne Hunter
+    if (currentGameMode === 'frappe') scheduleAdrenaline(); // pas de mode adrénaline en Couronne Hunter / Maxitrone
     AudioEngine.startCombatMusic();
 
     running = true;
@@ -2232,7 +2470,16 @@ const Match = (()=>{
     const titleEl = document.querySelector('#screen-endmatch h2');
     const note = document.querySelector('#screen-endmatch .end-note');
 
-    if (currentGameMode === 'couronne'){
+    if (currentGameMode === 'maxitrone'){
+      if (titleEl) titleEl.textContent = 'Maxitrone terminé';
+      const survivors = fighters.filter(f=>!f.permanentlyEliminated).sort((a,b)=>b.kills-a.kills);
+      survivors.forEach((f,i)=>{
+        const li=document.createElement('li'); if(f.isPlayer) li.className='me';
+        li.innerHTML=`<span>#${i+1} ${escapeHtml(f.name)}</span><span>${f.kills} élim. · ${f.alive?'vivant':'en attente'}</span>`;
+        list.appendChild(li);
+      });
+      if(note) note.textContent = survivors.length === 1 ? `🏆 ${survivors[0].name} remporte le Maxitrone ! Retour au lobby…` : 'Fin des 4 minutes. Retour au lobby…';
+    } else if (currentGameMode === 'couronne'){
       // Couronne Hunter : victoire par possession de 10 secondes, sinon match nul.
       // Aucune médaille n'est distribuée dans ce mode.
       const winner = opts.winner || null;
