@@ -276,5 +276,37 @@ router.post("/stats", requireLogin, async (req, res) => {
     });
   }
 });
+// Classement des joueurs
+router.get("/leaderboard", requireLogin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+        u.id,
+        u.username,
+        ps.points,
+        ps.league
+       FROM users u
+       LEFT JOIN player_stats ps
+         ON ps.user_id = u.id
+       ORDER BY
+         COALESCE(ps.points, 0) DESC,
+         LOWER(u.username)
+       LIMIT 100`
+    );
 
+    res.json({
+      players: result.rows.map(player => ({
+        id: player.id,
+        username: player.username,
+        points: Number(player.points) || 0,
+        league: Number(player.league) || 0
+      }))
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      error: "Impossible de récupérer le classement."
+    });
+  }
+});
 module.exports = router;
