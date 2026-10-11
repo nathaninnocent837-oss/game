@@ -25,6 +25,15 @@ async function init() {
     CONSTRAINT unique_friend_request
         UNIQUE (sender_id, receiver_id)
 );
+      CREATE TABLE IF NOT EXISTS player_stats (
+        user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        points INTEGER NOT NULL DEFAULT 0,
+        league INTEGER NOT NULL DEFAULT 0,
+        last_seen TIMESTAMPTZ,
+        online BOOLEAN NOT NULL DEFAULT FALSE,
+        in_combat BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
     `);
     console.log("Base TRUGO initialisée.");
   } catch (error) {
