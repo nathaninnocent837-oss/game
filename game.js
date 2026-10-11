@@ -1927,9 +1927,10 @@ const Match = (()=>{
       const moveX = joystickVec.x, moveZ = joystickVec.y;
       const mag = Math.hypot(moveX, moveZ);
       if (mag > 0.12){
-        // Même contrôle qu'avant, mais les directions sont inversées.
-        const moveForward = moveZ;
-        const moveRight = -moveX;
+        // Le joystick est relatif à la caméra : haut = avancer vers l'avant de la caméra,
+        // bas = reculer, droite/gauche = déplacement latéral. La caméra reste derrière le joueur.
+        const moveForward = -moveZ;
+        const moveRight = moveX;
         const worldX = camDirX*moveForward + camDirZ*moveRight;
         const worldZ = camDirZ*moveForward - camDirX*moveRight;
         const speed = BASE_SPEED * speedMultiplier;
