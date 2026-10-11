@@ -1,1 +1,277 @@
+const express = require("express");
+const pool = require("../db");
 
+const router = express.Router();
+
+// Vérifier que le joueur est connecté
+function requireLogin(req, res, next) {
+  if (!req.session.userId) {
+    return res.status(401).json({
+      error: "Tu dois être connecté."
+    });
+  }
+
+  next();
+}
+
+// Rechercher des joueurs
+router.get("/search", requireLogin, async (req, res) => {
+  try {
+    const query =
+      typeof req.query.q === "string"
+        ? req.query.q.trim()
+        : "";
+
+    if (query.length < 2) {
+      return res.json({ users: [] });
+    }
+
+    const result = await pool.query(
+      `SELECT id, username
+       FROM users
+       WHERE id <> $1
+         AND LOWER(username) LIKE LOWER($2)
+       ORDER BY username
+       LIMIT 20`,
+      [req.session.userId, `%${query}%`]
+    );
+
+    return res.json({ users: result.rows });
+  } catch (error) {
+    console.error("Erreur recherche amis :", error.message);
+    return res.status(500).json({
+      error: "Impossible de rechercher les joueurs."
+    });
+  }
+});
+
+// Envoyer une demande d'ami
+router.post("/request", requireLogin, async (req, res) => {
+  try {
+    const senderId = req.session.userId;
+    const receiverId = req.body.receiverId;
+
+    if (!receiverId) {
+      return res.status(400).json({
+        error: "Destinataire manquant."
+      });
+    }
+
+    if (String(senderId) === String(receiverId)) {
+      return res.status(400).json({
+        error: "Tu ne peux pas t'ajouter toi-même."
+      });
+    }
+
+    const userCheck = await pool.query(
+      `SELECT id FROM users WHERE id = $1`,
+      [receiverId]
+    );
+
+    if (userCheck.rowCount === 0) {
+      return res.status(404).json({
+        error: "Joueur introuvable."
+      });
+    }
+
+    const existing = await pool.query(
+      `SELECT id, status, sender_id, receiver_id
+       FROM friend_requests
+       WHERE
+         (sender_id = $1 AND receiver_id = $2)
+         OR
+         (sender_id = $2 AND receiver_id = $1)
+       LIMIT 1`,
+      [senderId, receiverId]
+    );
+
+    if (existing.rowCount > 0) {
+      const request = existing.rows[0];
+
+      if (request.status === "accepted") {
+        return res.status(409).json({
+          error: "Vous êtes déjà amis."
+        });
+      }
+
+      if (
+        String(request.sender_id) === String(receiverId) &&
+        request.status === "pending"
+      ) {
+        return res.status(409).json({
+          error: "Ce joueur t'a déjà envoyé une demande."
+        });
+      }
+
+      return res.status(409).json({
+        error: "Une demande est déjà en cours."
+      });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO friend_requests
+       (sender_id, receiver_id)
+       VALUES ($1, $2)
+       RETURNING id, sender_id, receiver_id, status, created_at`,
+      [senderId, receiverId]
+    );
+
+    return res.status(201).json({
+      message: "Demande d'ami envoyée.",
+      request: result.rows[0]
+    });
+  } catch (error) {
+    console.error("Erreur demande ami :", error.message);
+    return res.status(500).json({
+      error: "Impossible d'envoyer la demande."
+    });
+  }
+});
+
+// Voir les demandes reçues
+router.get("/requests", requireLogin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+         fr.id,
+         fr.sender_id,
+         u.username AS sender_username,
+         fr.created_at
+       FROM friend_requests fr
+       JOIN users u ON u.id = fr.sender_id
+       WHERE fr.receiver_id = $1
+         AND fr.status = 'pending'
+       ORDER BY fr.created_at DESC`,
+      [req.session.userId]
+    );
+
+    return res.json({ requests: result.rows });
+  } catch (error) {
+    console.error("Erreur demandes amis :", error.message);
+    return res.status(500).json({
+      error: "Impossible de récupérer les demandes."
+    });
+  }
+});
+
+// Accepter une demande
+router.post("/requests/:id/accept", requireLogin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `UPDATE friend_requests
+       SET status = 'accepted'
+       WHERE id = $1
+         AND receiver_id = $2
+         AND status = 'pending'
+       RETURNING id, sender_id, receiver_id, status, created_at`,
+      [req.params.id, req.session.userId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        error: "Demande introuvable."
+      });
+    }
+
+    return res.json({
+      message: "Demande acceptée.",
+      request: result.rows[0]
+    });
+  } catch (error) {
+    console.error("Erreur acceptation ami :", error.message);
+    return res.status(500).json({
+      error: "Impossible d'accepter la demande."
+    });
+  }
+});
+
+// Refuser une demande
+router.post("/requests/:id/reject", requireLogin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `DELETE FROM friend_requests
+       WHERE id = $1
+         AND receiver_id = $2
+         AND status = 'pending'
+       RETURNING id`,
+      [req.params.id, req.session.userId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        error: "Demande introuvable."
+      });
+    }
+
+    return res.json({
+      message: "Demande refusée."
+    });
+  } catch (error) {
+    console.error("Erreur refus ami :", error.message);
+    return res.status(500).json({
+      error: "Impossible de refuser la demande."
+    });
+  }
+});
+
+// Voir la liste des amis
+router.get("/", requireLogin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+         u.id,
+         u.username
+       FROM friend_requests fr
+       JOIN users u
+         ON u.id = CASE
+           WHEN fr.sender_id = $1 THEN fr.receiver_id
+           ELSE fr.sender_id
+         END
+       WHERE fr.status = 'accepted'
+         AND (fr.sender_id = $1 OR fr.receiver_id = $1)
+       ORDER BY LOWER(u.username)`,
+      [req.session.userId]
+    );
+
+    return res.json({ friends: result.rows });
+  } catch (error) {
+    console.error("Erreur liste amis :", error.message);
+    return res.status(500).json({
+      error: "Impossible de récupérer les amis."
+    });
+  }
+});
+
+// Supprimer un ami
+router.delete("/:friendId", requireLogin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `DELETE FROM friend_requests
+       WHERE status = 'accepted'
+         AND (
+           (sender_id = $1 AND receiver_id = $2)
+           OR
+           (sender_id = $2 AND receiver_id = $1)
+         )
+       RETURNING id`,
+      [req.session.userId, req.params.friendId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        error: "Cet ami n'a pas été trouvé."
+      });
+    }
+
+    return res.json({
+      message: "Ami supprimé."
+    });
+  } catch (error) {
+    console.error("Erreur suppression ami :", error.message);
+    return res.status(500).json({
+      error: "Impossible de supprimer cet ami."
+    });
+  }
+});
+
+module.exports = router;
