@@ -213,15 +213,7 @@ document.getElementById('lobby-points').addEventListener('click', ()=>{
    Les autres joueurs restent des exemples locaux tant qu'un
    backend et une base de données ne sont pas connectés.
 --------------------------------------------------------- */
-const DEMO_LEAGUE_PLAYERS = [
-  { name:'Raven92', league:10, medals:2500 },
-  { name:'NyxBlade', league:8, medals:2100 },
-  { name:'KatoStorm', league:6, medals:1800 },
-  { name:'VexOni', league:4, medals:1400 },
-  { name:'JunoFang', league:3, medals:900 },
-  { name:'MiloSprint', league:1, medals:400 },
-  { name:'ZedArrow', league:0, medals:180 }
-];
+
 let activeRankingTab = 'leagues';
 let serverLeaderboard = null;
 let leaderboardLoading = false;
@@ -245,7 +237,6 @@ function renderRankings(){
   const description = document.getElementById('ranking-panel-description');
   if (!list || !title || !description) return;
   const player = { name: APP.username || 'Toi', league: Math.max(0, Math.min(LEAGUES.length-1, Number(APP.league) || 0)), medals: Number(APP.points) || 0, isPlayer:true };
-  const others = DEMO_LEAGUE_PLAYERS.filter(p => p.name.toLowerCase() !== String(APP.username || '').toLowerCase());
   let entries = serverLeaderboard && serverLeaderboard.length
     ? serverLeaderboard.map(p=>({name:p.username,league:Number(p.league)||0,medals:Number(p.points)||0,isPlayer:String(p.username).toLowerCase()===String(APP.username||'').toLowerCase()}))
     : [...others, player];
