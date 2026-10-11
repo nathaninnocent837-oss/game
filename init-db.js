@@ -28,7 +28,6 @@ async function init() {
       );
 
       DROP VIEW IF EXISTS player_stats CASCADE;
-DROP TABLE IF EXISTS player_stats CASCADE;
 
       CREATE TABLE player_stats (
         user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
