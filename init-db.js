@@ -34,6 +34,13 @@ async function init() {
         in_combat BOOLEAN NOT NULL DEFAULT FALSE,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+            ALTER TABLE player_stats
+        ADD COLUMN IF NOT EXISTS points INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS league INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS online BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS in_combat BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
     `);
     console.log("Base TRUGO initialisée.");
   } catch (error) {
