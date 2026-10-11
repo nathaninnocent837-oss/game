@@ -250,7 +250,32 @@ router.post("/presence", requireLogin, async (req, res) => {
 });
 
 router.post("/stats", requireLogin, async (req, res) => {
-  res.json({ ok: true });
+  try {
+    const points = Math.max(0, Number(req.body.points) || 0);
+    const league = Math.max(0, Number(req.body.league) || 0);
+
+    await pool.query(
+      `INSERT INTO player_stats
+        (user_id, points, league, last_seen, online, updated_at)
+       VALUES ($1, $2, $3, NOW(), TRUE, NOW())
+       ON CONFLICT (user_id)
+       DO UPDATE SET
+         points = EXCLUDED.points,
+         league = EXCLUDED.league,
+         last_seen = NOW(),
+         online = TRUE,
+         updated_at = NOW()`,
+      [req.session.userId, points, league]
+    );
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      error: "Impossible d'enregistrer les statistiques."
+    });
+  }
+});
 });
 
 module.exports = router;
