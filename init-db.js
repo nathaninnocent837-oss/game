@@ -27,7 +27,8 @@ async function init() {
           UNIQUE (sender_id, receiver_id)
       );
 
-      DROP TABLE IF EXISTS player_stats;
+      DROP VIEW IF EXISTS player_stats CASCADE;
+DROP TABLE IF EXISTS player_stats CASCADE;
 
       CREATE TABLE player_stats (
         user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
