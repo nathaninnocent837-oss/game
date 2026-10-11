@@ -11,6 +11,20 @@ async function init() {
       );
       CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_unique
         ON users (LOWER(username));
+
+        CREATE TABLE IF NOT EXISTS friend_requests (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    sender_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    receiver_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT different_users
+        CHECK (sender_id <> receiver_id),
+
+    CONSTRAINT unique_friend_request
+        UNIQUE (sender_id, receiver_id)
+);
     `);
     console.log("Base TRUGO initialisée.");
   } catch (error) {
