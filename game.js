@@ -43,6 +43,10 @@ const APP = {
   equipment: Store.load('trugo_equipment', ['ice', 'fog', 'heal']),
   points: Store.load('trugo_points', 0),
   league: Store.load('trugo_league', 0), // ligue actuelle (Bronze par défaut)
+  gamesPlayed: Store.load('trugo_games_played', 0),
+  wins: Store.load('trugo_wins', 0),
+  eliminations: Store.load('trugo_eliminations', 0),
+  maxLeague: Store.load('trugo_max_league', Store.load('trugo_league', 0)),
 };
 
 /* ---------------------------------------------------------
@@ -723,6 +727,29 @@ function socialMessage(message,error=false){
  if(!el){el=document.createElement('p');el.id='friends-message';el.className='social-message';document.querySelector('#panel-friends .panel-inner')?.prepend(el);}
  el.textContent=message;el.classList.toggle('error',error);
 }
+function formatLastSeen(lastSeen, online){
+ if(online) return '● En ligne';
+ if(!lastSeen) return '○ Jamais connecté';
+ const sec=Math.max(0,Math.floor((Date.now()-new Date(lastSeen).getTime())/1000));
+ if(sec<60) return '○ Hors ligne depuis moins d’une minute';
+ if(sec<3600) return `○ Hors ligne depuis ${Math.floor(sec/60)} min`;
+ if(sec<86400) return `○ Hors ligne depuis ${Math.floor(sec/3600)} h`;
+ return `○ Hors ligne depuis ${Math.floor(sec/86400)} j`;
+}
+function showFriendProfile(id){
+ socialRequest('/api/friends/'+encodeURIComponent(id)+'/profile').then(d=>{
+  const p=d.profile, league=LEAGUES[Number(p.league)||0]||LEAGUES[0], max=LEAGUES[Number(p.max_league)||0]||LEAGUES[0];
+  let modal=document.getElementById('friend-profile-modal');
+  if(!modal){
+   modal=document.createElement('div'); modal.id='friend-profile-modal'; modal.style.cssText='position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.72);padding:18px;';
+   modal.innerHTML='<div id="friend-profile-card" style="width:min(430px,94vw);max-height:88vh;overflow:auto;background:#101722;border:1px solid rgba(255,255,255,.18);border-radius:22px;padding:20px;color:#fff;box-shadow:0 20px 70px rgba(0,0,0,.5);"></div>';
+   modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();}); document.body.appendChild(modal);
+  }
+  const card=modal.querySelector('#friend-profile-card');
+  card.innerHTML=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px"><div style="width:52px;height:52px;border-radius:50%;background:${p.outfit_color};border:4px solid ${p.sword_color};box-shadow:0 0 0 2px rgba(255,255,255,.15)"></div><div><h2 style="margin:0">${escapeHtml(p.username)}</h2><div style="color:${league.color};font-weight:900">${escapeHtml(league.name)} · 🏅 ${p.points}</div><small>${formatLastSeen(p.last_seen,p.online)}</small></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:9px"><div style="padding:11px;border-radius:12px;background:rgba(255,255,255,.07)">🎮 Parties<br><b>${p.games_played}</b></div><div style="padding:11px;border-radius:12px;background:rgba(255,255,255,.07)">🏆 Victoires<br><b>${p.wins}</b></div><div style="padding:11px;border-radius:12px;background:rgba(255,255,255,.07)">⚔️ Éliminations<br><b>${p.eliminations}</b></div><div style="padding:11px;border-radius:12px;background:rgba(255,255,255,.07)">👑 Ligue max<br><b style="color:${max.color}">${escapeHtml(max.name)}</b></div></div><div style="margin-top:14px;padding:12px;border-radius:14px;background:rgba(255,255,255,.06)"><b>🎨 Personnage</b><div style="margin-top:8px">Tenue <span style="display:inline-block;width:22px;height:22px;border-radius:50%;vertical-align:middle;background:${p.outfit_color};border:2px solid #fff"></span> · Épée <span style="display:inline-block;width:22px;height:22px;border-radius:50%;vertical-align:middle;background:${p.sword_color};border:2px solid #fff"></span></div></div><button type="button" style="width:100%;margin-top:16px;padding:12px;border:0;border-radius:12px;font-weight:900;cursor:pointer">Fermer</button>`;
+  card.querySelector('button').onclick=()=>modal.remove();
+ }).catch(e=>socialMessage(e.message,true));
+}
 function renderFriendRows(target,rows,mode){
  target.replaceChildren();
  if(!rows.length){const li=document.createElement('li');li.className='empty';li.textContent=mode==='mine'?'Aucun ami pour le moment — recherche un joueur ci-dessus.':'Aucun compte correspondant.';target.appendChild(li);return;}
@@ -730,20 +757,24 @@ function renderFriendRows(target,rows,mode){
   const li=document.createElement('li');li.className='friend-card';
   const info=document.createElement('span');info.className='friend-info';
   const name=document.createElement('strong');name.textContent=user.username;
-  const status=document.createElement('small');status.className='friend-status '+(user.online?'online':'offline');status.textContent=user.online?'● En ligne':'○ Hors ligne';
+  const status=document.createElement('small');status.className='friend-status '+(user.online?'online':'offline');status.textContent=formatLastSeen(user.last_seen,user.online);
   info.append(name,status);li.appendChild(info);
+  const actions=document.createElement('span'); actions.style.cssText='display:flex;gap:6px;align-items:center;';
+  if(mode==='mine' && user.status==='accepted'){
+   const profile=document.createElement('button'); profile.textContent='Profil'; profile.onclick=()=>showFriendProfile(user.id); actions.appendChild(profile);
+  }
   const btn=document.createElement('button');
   if(mode==='mine'&&user.status==='pending'&&String(user.requester_id)!==String(APP.userId)){
    btn.textContent='Accepter';btn.onclick=async()=>{try{await socialRequest('/api/friends/accept/'+user.id,{method:'POST',body:'{}'});await loadFriends();}catch(e){socialMessage(e.message,true);}};
   }else if(mode==='mine'){
-   btn.textContent=user.status==='pending'?'Annuler':'Retirer';btn.className='friend-remove';
-   btn.onclick=async()=>{try{await socialRequest('/api/friends/'+user.id,{method:'DELETE'});await loadFriends();}catch(e){socialMessage(e.message,true);}};
+   btn.textContent=user.status==='pending'?'Annuler':'Retirer';btn.className='friend-remove';btn.onclick=async()=>{try{await socialRequest('/api/friends/'+user.id,{method:'DELETE'});await loadFriends();}catch(e){socialMessage(e.message,true);}};
   }else{
-   btn.textContent=user.relationship==='friend'?'Déjà ami':user.relationship==='sent'?'Demande envoyée':user.relationship==='received'?'Accepter':'Ajouter';
+   btn.textContent=user.relationship==='friend'?'Profil':user.relationship==='sent'?'Demande envoyée':user.relationship==='received'?'Accepter':'Ajouter';
    btn.disabled=['friend','sent'].includes(user.relationship);
-   btn.onclick=async()=>{try{await socialRequest('/api/friends/request',{method:'POST',body:JSON.stringify({username:user.username})});socialMessage('Demande envoyée à '+user.username+' ✨');await searchFriends(document.getElementById('friends-search').value);await loadFriends();}catch(e){socialMessage(e.message,true);}};
+   if(user.relationship==='friend') btn.onclick=()=>showFriendProfile(user.id);
+   else btn.onclick=async()=>{try{await socialRequest('/api/friends/request',{method:'POST',body:JSON.stringify({username:user.username})});socialMessage('Demande envoyée à '+user.username+' ✨');await searchFriends(document.getElementById('friends-search').value);await loadFriends();}catch(e){socialMessage(e.message,true);}};
   }
-  li.appendChild(btn);target.appendChild(li);
+  actions.appendChild(btn);li.appendChild(actions);target.appendChild(li);
  });
 }
 async function loadFriends(){try{const d=await socialRequest('/api/friends');renderFriendRows(document.getElementById('friends-mine'),d.friends.map(f=>({...f,id:f.friendship_id})),'mine');}catch(e){socialMessage(e.message,true);}}
@@ -756,7 +787,7 @@ document.getElementById('btn-friends').addEventListener('click',()=>{document.ge
 document.getElementById('friends-search').addEventListener('input',e=>searchFriends(e.target.value));
 async function socialHeartbeat(){
  if(!APP.username)return;
- try{await socialRequest('/api/friends/presence',{method:'POST',body:'{}'});await socialRequest('/api/friends/stats',{method:'POST',body:JSON.stringify({points:APP.points||0,league:APP.league||0})});if(document.getElementById('panel-friends')?.classList.contains('open'))await loadFriends();}catch(_){}
+ try{await socialRequest('/api/friends/presence',{method:'POST',body:'{}'});await socialRequest('/api/friends/stats',{method:'POST',body:JSON.stringify({points:APP.points||0,league:APP.league||0,gamesPlayed:APP.gamesPlayed||0,wins:APP.wins||0,eliminations:APP.eliminations||0,maxLeague:APP.maxLeague||APP.league||0,outfitColor:APP.outfitColor,swordColor:APP.swordColor})});if(document.getElementById('panel-friends')?.classList.contains('open'))await loadFriends();}catch(_){}
 }
 setInterval(socialHeartbeat,30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)socialHeartbeat();});
@@ -2457,6 +2488,14 @@ const Match = (()=>{
     setupJoystick();
   }
 
+  function saveCareerStats({won=false, kills=0}={}){
+    APP.gamesPlayed=(APP.gamesPlayed||0)+1;
+    APP.wins=(APP.wins||0)+(won?1:0);
+    APP.eliminations=(APP.eliminations||0)+Math.max(0,Number(kills)||0);
+    APP.maxLeague=Math.max(APP.maxLeague||0, APP.league||0);
+    Store.save('trugo_games_played',APP.gamesPlayed); Store.save('trugo_wins',APP.wins); Store.save('trugo_eliminations',APP.eliminations); Store.save('trugo_max_league',APP.maxLeague);
+  }
+
   function endMatch(opts = {}){
     running = false;
     clearInterval(matchTimerInterval);
@@ -2538,6 +2577,14 @@ const Match = (()=>{
       }
     }
 
+    const me = fighters.find(f=>f.isPlayer);
+    const won = currentGameMode === 'maxitrone'
+      ? !!(me && !me.permanentlyEliminated && fighters.filter(f=>!f.permanentlyEliminated).length === 1)
+      : currentGameMode === 'couronne'
+        ? !!(opts.winner && opts.winner.isPlayer)
+        : !!(me && [...fighters].sort((a,b)=>b.kills-a.kills)[0] === me);
+    saveCareerStats({won, kills:me?.kills||0});
+    socialHeartbeat();
     showScreen('screen-endmatch');
     setTimeout(()=>{
       showScreen('screen-lobby');

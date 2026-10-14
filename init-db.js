@@ -36,7 +36,13 @@ DROP TABLE IF EXISTS player_stats CASCADE;
         last_seen TIMESTAMPTZ,
         online BOOLEAN NOT NULL DEFAULT FALSE,
         in_combat BOOLEAN NOT NULL DEFAULT FALSE,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        games_played INTEGER NOT NULL DEFAULT 0,
+        wins INTEGER NOT NULL DEFAULT 0,
+        eliminations INTEGER NOT NULL DEFAULT 0,
+        max_league INTEGER NOT NULL DEFAULT 0,
+        outfit_color VARCHAR(20),
+        sword_color VARCHAR(20)
       );
     `);
 
