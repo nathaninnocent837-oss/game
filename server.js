@@ -2,6 +2,7 @@
 const session = require("express-session");
 const PgSession = require("connect-pg-simple")(session);
 const pool = require("./db");
+const { ensureProfileSchema } = require("./profile-schema");
 
 const express = require('express');
 const path = require('path');
@@ -39,6 +40,7 @@ app.use(
 
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/friends", require("./routes/friends"));
+app.use("/api/profile", require("./routes/profile"));
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
@@ -47,6 +49,12 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-});
+ensureProfileSchema()
+  .catch((error) => {
+    console.error("Erreur migration profils :", error.message);
+  })
+  .finally(() => {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server is running on http://localhost:${PORT}`);
+    });
+  });

@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=2">
 <link rel="stylesheet" href="league-updates.css?v=1">
+<link rel="stylesheet" href="profile.css?v=1">
 </head>
 <body>
 
@@ -60,6 +61,10 @@
     <button class="icon-btn" id="btn-team" aria-label="Équipe">
       <svg viewBox="0 0 24 24"><path d="M17 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM7 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm10 2c-2 0-6 1-6 3v3h9v-3c0-2-1-3-3-3ZM7 13c-2.8 0-7 1.4-7 3.2V19h9v-2.8c0-.7.2-1.4.6-2.1C8.7 13.4 7.8 13 7 13Z"/></svg>
       <span>Équipe</span>
+    </button>
+    <button class="staff-btn" id="btn-staff" aria-label="Panneau staff" hidden>
+      <svg viewBox="0 0 24 24"><path d="M3 18h18v2.2H3zM3 7l4.6 4.2L12 4l4.4 7.2L21 7l-2 9.2H5z"/></svg>
+      <span>Staff</span>
     </button>
   </div>
 
@@ -334,6 +339,44 @@
   </div>
 </div>
 
+<!-- ===================== PANNEAU PROFIL ===================== -->
+<div id="panel-profile" class="panel">
+  <div class="panel-inner profile-panel">
+    <div class="panel-head">
+      <h2>Profil</h2>
+      <button class="panel-close" data-close="panel-profile" aria-label="Fermer">&times;</button>
+    </div>
+    <div id="profile-body"></div>
+  </div>
+</div>
+
+<!-- ===================== PANNEAU SPECTATEUR ===================== -->
+<div id="panel-spectate" class="panel">
+  <div class="panel-inner spectate-panel">
+    <div class="panel-head">
+      <h2>Combat en direct</h2>
+      <button class="panel-close" data-close="panel-spectate" aria-label="Fermer">&times;</button>
+    </div>
+    <div id="spectate-body"></div>
+  </div>
+</div>
+
+<!-- ===================== PANNEAU STAFF ===================== -->
+<div id="panel-staff" class="panel">
+  <div class="panel-inner staff-panel">
+    <div class="staff-hero">
+      <span class="staff-crown"><svg viewBox="0 0 24 24"><path d="M3 18h18v2.2H3zM3 7l4.6 4.2L12 4l4.4 7.2L21 7l-2 9.2H5z"/></svg></span>
+      <div class="staff-hero-text">
+        <h2>Panneau Staff</h2>
+        <p id="staff-sub"></p>
+      </div>
+      <button class="panel-close" data-close="panel-staff" aria-label="Fermer">&times;</button>
+    </div>
+    <div class="staff-tabs" id="staff-tabs"></div>
+    <div id="staff-body"></div>
+  </div>
+</div>
+
 <!-- ===================== VERROU D'ORIENTATION ===================== -->
 <div id="orientation-lock">
   <svg viewBox="0 0 24 24" class="rotate-icon"><path d="M16.5 3.5 20 7l-3.5 3.5M20 7H9a4 4 0 0 0-4 4v1M7.5 20.5 4 17l3.5-3.5M4 17h11a4 4 0 0 0 4-4v-1"/></svg>
@@ -342,5 +385,6 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="game.js"></script>
+<script src="profile.js?v=1"></script>
 </body>
 </html>
