@@ -116,6 +116,9 @@ const EQUIPMENT_NAMES = {
   ice: 'Glace',
   fog: 'Brouillard',
   heal: 'Soin',
+  cow: 'Vache enragée',
+  bolt: 'Éclair',
+  mortar: 'Mortier de lion',
 };
 
 /* ---------------------------------------------------------
@@ -695,10 +698,28 @@ document.getElementById('btn-shop').addEventListener('click', ()=>{
   // Bouton volontairement inactif pour l'instant.
 });
 
-document.getElementById('btn-equipment').addEventListener('click', ()=>{
+// Sécurité : uniquement des équipements connus, 3 au maximum (anciennes sauvegardes comprises)
+APP.equipment = (Array.isArray(APP.equipment) ? APP.equipment : [])
+  .filter((t, i, a)=>['ice', 'fog', 'heal', 'cow', 'bolt', 'mortar'].includes(t) && a.indexOf(t) === i)
+  .slice(0, 3);
+if (!APP.equipment.length) APP.equipment = ['ice', 'fog', 'heal'];
+
+function refreshEquipmentCards(){
+  const full = APP.equipment.length >= 3;
   document.querySelectorAll('.equipment-card').forEach(card=>{
-    card.classList.toggle('selected', APP.equipment.includes(card.dataset.equipment));
+    const on = APP.equipment.includes(card.dataset.equipment);
+    card.classList.toggle('selected', on);
+    card.classList.toggle('locked', full && !on);
   });
+  const counter = document.getElementById('equipment-count');
+  if (counter){
+    counter.textContent = `${APP.equipment.length} / 3 équipements choisis`;
+    counter.classList.toggle('full', full);
+  }
+}
+
+document.getElementById('btn-equipment').addEventListener('click', ()=>{
+  refreshEquipmentCards();
   openPanel('panel-equipment');
 });
 document.querySelectorAll('.equipment-card').forEach(card=>{
@@ -708,9 +729,19 @@ document.querySelectorAll('.equipment-card').forEach(card=>{
       APP.equipment = APP.equipment.filter(item=>item !== equipment);
     } else if (APP.equipment.length < 3){
       APP.equipment.push(equipment);
+    } else {
+      // déjà 3 équipements : le compteur tremble pour dire « retire-en un d'abord »
+      const counter = document.getElementById('equipment-count');
+      if (counter){
+        counter.classList.remove('shake');
+        void counter.offsetWidth;
+        counter.classList.add('shake');
+        setTimeout(()=>counter.classList.remove('shake'), 450);
+      }
+      return;
     }
-    card.classList.toggle('selected', APP.equipment.includes(equipment));
     Store.save('trugo_equipment', APP.equipment);
+    refreshEquipmentCards();
   });
 });
 
@@ -836,6 +867,7 @@ const Lobby = (()=>{
   let renderer, scene, camera, character, clock;
   let running = false;
   let bodyMesh, swordMesh, capeMesh, shoulderLMesh, shoulderRMesh, visorMesh, armLMesh, armRMesh;
+  let lobbyRings = [], lobbyParticles = null, lobbyLastT = 0;
 
   function buildCharacter(){
     const group = new THREE.Group();
@@ -921,6 +953,39 @@ const Lobby = (()=>{
     hiltMesh.rotation.z = -0.5;
     group.add(hiltMesh);
 
+    // ---- détails supplémentaires : cheveux, crête, plastron, pointes, gants, lame complète ----
+    const gold = new THREE.MeshStandardMaterial({ color:'#d9a441', metalness:0.85, roughness:0.3 });
+    const hair = new THREE.Mesh(
+      new THREE.SphereGeometry(0.335, 16, 10, 0, Math.PI*2, 0, Math.PI*0.42),
+      new THREE.MeshStandardMaterial({ color:'#2a1c14', roughness:0.9, metalness:0 })
+    );
+    hair.position.set(0, 1.87, -0.02); group.add(hair);
+    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.18, 0.42), visorMesh.material);   // même matière que la visière : suit la couleur d'épée
+    crest.position.set(0, 2.17, -0.04); group.add(crest);
+    const plate = new THREE.Mesh(new THREE.SphereGeometry(0.42, 14, 10), new THREE.MeshStandardMaterial({ color:'#cfd6e0', roughness:0.28, metalness:0.85 }));
+    plate.scale.set(1.0, 0.82, 0.55); plate.position.set(0, 1.28, 0.22); group.add(plate);
+    const emblem = new THREE.Mesh(new THREE.OctahedronGeometry(0.1, 0), visorMesh.material);
+    emblem.scale.set(1, 1.4, 0.6); emblem.position.set(0, 1.3, 0.46); group.add(emblem);
+    const spikeGeo = new THREE.ConeGeometry(0.065, 0.26, 6);
+    [[-1, shoulderLMesh], [1, shoulderRMesh]].forEach(([s, pad])=>{
+      const spike = new THREE.Mesh(spikeGeo, visorMesh.material);
+      spike.position.set(s*0.6, 1.76, 0); spike.rotation.z = -s*0.7; group.add(spike);
+    });
+    [-1, 1].forEach(s=>{
+      const glove = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), new THREE.MeshStandardMaterial({ color:'#3a2a1a', roughness:0.8 }));
+      glove.position.set(s*0.55, 0.72, 0); group.add(glove);
+    });
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.13, 0.06), gold);
+    buckle.position.set(0, 0.62, 0.46); group.add(buckle);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 4), swordMesh.material);
+    tip.position.y = 0.64; tip.rotation.y = Math.PI/4; tip.scale.z = 0.55; swordMesh.add(tip);
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.07, 0.11), gold);
+    guard.position.y = -0.55; swordMesh.add(guard);
+    const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), gold);
+    pommel.position.y = -0.78; swordMesh.add(pommel);
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.96, 0.065), new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0.5 }));
+    edge.position.y = 0.02; swordMesh.add(edge);
+
     return group;
   }
 
@@ -971,6 +1036,38 @@ const Lobby = (()=>{
     character = buildCharacter();
     scene.add(character);
 
+    // piste lumineuse sous le personnage + poussières flottantes
+    lobbyRings = [];
+    [[1.15, 1.22, '#ffb648', 0.55, 0.35], [1.6, 1.64, '#45d6c4', 0.4, -0.25], [2.3, 2.33, '#b46bff', 0.25, 0.15]].forEach(r=>{
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(r[0], r[1], 64),
+        new THREE.MeshBasicMaterial({ color:r[2], transparent:true, opacity:r[3], side:THREE.DoubleSide, depthWrite:false })
+      );
+      ring.rotation.x = -Math.PI/2; ring.position.y = 0.02;
+      scene.add(ring);
+      lobbyRings.push({ mesh:ring, speed:r[4] });
+    });
+    // marques sur les anneaux pour que la rotation se voie
+    lobbyRings.forEach((r, idx)=>{
+      for (let i=0;i<6;i++){
+        const a = (i/6)*Math.PI*2;
+        const radius = idx === 0 ? 1.18 : idx === 1 ? 1.62 : 2.31;
+        const dot = new THREE.Mesh(new THREE.CircleGeometry(0.06 + idx*0.01, 10), new THREE.MeshBasicMaterial({ color:'#ffffff', transparent:true, opacity:0.7, depthWrite:false }));
+        dot.position.set(Math.cos(a)*radius, Math.sin(a)*radius, 0.001);
+        r.mesh.add(dot);
+      }
+    });
+    const pn = 90;
+    const ppos = new Float32Array(pn*3);
+    for (let i=0;i<pn;i++){
+      const a = Math.random()*Math.PI*2, d = 0.8 + Math.random()*2.6;
+      ppos[i*3] = Math.cos(a)*d; ppos[i*3+1] = Math.random()*3.6; ppos[i*3+2] = Math.sin(a)*d;
+    }
+    const pgeo = new THREE.BufferGeometry();
+    pgeo.setAttribute('position', new THREE.BufferAttribute(ppos, 3));
+    lobbyParticles = new THREE.Points(pgeo, new THREE.PointsMaterial({ color:'#ffdca0', size:0.05, transparent:true, opacity:0.6, depthWrite:false }));
+    scene.add(lobbyParticles);
+
     clock = new THREE.Clock();
     window.addEventListener('resize', onResize);
     onResize();
@@ -992,6 +1089,14 @@ const Lobby = (()=>{
     character.position.y = Math.sin(t * 2) * 0.03;
     if (swordMesh) swordMesh.rotation.z = -0.5 + Math.sin(t*2)*0.08;
     if (capeMesh) capeMesh.rotation.x = 0.12 + Math.sin(t*2.2)*0.05;
+    const ldt = Math.min(0.1, t - (lobbyLastT || t));
+    lobbyLastT = t;
+    lobbyRings.forEach(r=>{ r.mesh.rotation.z += ldt*r.speed; });
+    if (lobbyParticles){
+      const arr = lobbyParticles.geometry.attributes.position.array;
+      for (let i=1;i<arr.length;i+=3){ arr[i] += ldt*0.25; if (arr[i] > 3.6) arr[i] = 0; }
+      lobbyParticles.geometry.attributes.position.needsUpdate = true;
+    }
     renderer.render(scene, camera);
   }
 
@@ -1138,6 +1243,19 @@ function stepTowardAngle(current, target, maxStep){
   return current + Math.sign(diff) * maxStep;
 }
 const EQUIPMENT_COOLDOWN = 20; // chaque équipement revient après 20 secondes
+
+// ---- nouveaux équipements ----
+const COW_GRAZE_SECONDS = 9;       // la vache broute 9 s avant de charger
+const COW_DAMAGE = 10000;
+const COW_SPEED = 9;
+const COW_CHARGE_TIMEOUT = 20;     // sécurité : la vache disparaît si elle n'atteint personne
+const BOLT_DAMAGE = 350;           // dégâts de l'éclair (non précisés : à ajuster ici)
+const MORTAR_HP = 1321;
+const MORTAR_DAMAGE = 456;
+const MORTAR_FIRE_INTERVAL = 5;    // secondes entre deux tirs
+const MORTAR_FLIGHT_TIME = 5;      // secondes avant que le rocher atterrisse
+const BOT_EQUIPMENT_COOLDOWN = 25; // recharge des équipements des robots
+const ALL_EQUIPMENT = ['ice', 'fog', 'heal', 'cow', 'bolt', 'mortar'];
 const ADRENALINE_DURATION = 30; // secondes
 const ADRENALINE_MIN_DELAY = 30; // secondes avant que le mode puisse s'activer
 const ADRENALINE_END_MARGIN = 15; // secondes de marge avant la fin de la partie
@@ -1166,6 +1284,12 @@ const Match = (()=>{
   let fogVisual = null;
   let iceVisuals = [];
   let effects = [];
+
+  // ---- nouveaux équipements (vache, éclair, mortier) + décor animé ----
+  let cows = [], mortars = [], rocks = [], bolts = [];
+  let playerBlindUntil = 0;
+  let fxFlash = null, fxBlind = null, fxWarning = null, warningTimer = null;
+  let ambientFlames = [], runeRings = [];
 
   // ---- mode adrénaline ----
   let hemiLight, sunLight;
@@ -1593,82 +1717,197 @@ const Match = (()=>{
     wall.position.y = 0.1;
     scene.add(wall);
 
+    addArenaDecor();
     addAtmosphericDust();
+  }
+
+  function makeGlowTexture(){
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grd.addColorStop(0, 'rgba(255,215,140,1)');
+    grd.addColorStop(0.35, 'rgba(255,150,50,0.5)');
+    grd.addColorStop(1, 'rgba(255,100,0,0)');
+    g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(c);
+  }
+
+  // piliers de pierre avec braseros, cercles runiques au sol
+  function addArenaDecor(){
+    ambientFlames = [];
+    runeRings = [];
+    const pillarMat = new THREE.MeshStandardMaterial({ color:'#5a5144', roughness:0.9, metalness:0.05 });
+    const capMat = new THREE.MeshStandardMaterial({ color:'#2f2a22', roughness:0.8, metalness:0.1 });
+    const ironMat = new THREE.MeshStandardMaterial({ color:'#25282e', roughness:0.5, metalness:0.7 });
+    const glowTex = makeGlowTexture();
+    const count = 16;
+    for (let i=0;i<count;i++){
+      const a = (i/count)*Math.PI*2;
+      const x = Math.cos(a)*(ARENA_RADIUS+0.2), z = Math.sin(a)*(ARENA_RADIUS+0.2);
+      const h = 1.5 + (i%2)*0.35;
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.34, h, 8), pillarMat);
+      pillar.position.set(x, h/2, z); scene.add(pillar);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.14, 0.78), capMat);
+      cap.position.set(x, h+0.07, z); cap.rotation.y = -a; scene.add(cap);
+      if (i%2 === 0){
+        const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.16, 0.22, 10), ironMat);
+        bowl.position.set(x, h+0.25, z); scene.add(bowl);
+        const flame = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.6, 7), new THREE.MeshBasicMaterial({ color:'#ff9a2e', transparent:true, opacity:0.92, depthWrite:false }));
+        flame.position.set(x, h+0.6, z); scene.add(flame);
+        const core = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.38, 6), new THREE.MeshBasicMaterial({ color:'#ffe27a', transparent:true, opacity:0.95, depthWrite:false }));
+        core.position.set(x, h+0.52, z); scene.add(core);
+        const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map:glowTex, transparent:true, opacity:0.6, blending:THREE.AdditiveBlending, depthWrite:false }));
+        glow.scale.set(2.6, 2.6, 1); glow.position.set(x, h+0.65, z); scene.add(glow);
+        const phase = Math.random()*10;
+        ambientFlames.push({ mesh:flame, baseY:h+0.6, phase, glow });
+        ambientFlames.push({ mesh:core, baseY:h+0.52, phase:phase+1.7 });
+      }
+    }
+    // cercles runiques au sol (légère lueur)
+    [[2.6, 2.72, '#ffb648', 0.28, 0.25], [5.4, 5.5, '#45d6c4', 0.2, -0.18], [9.5, 9.58, '#ffb648', 0.14, 0.1]].forEach(r=>{
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(r[0], r[1], 64),
+        new THREE.MeshBasicMaterial({ color:r[2], transparent:true, opacity:r[3], side:THREE.DoubleSide, depthWrite:false })
+      );
+      ring.rotation.x = -Math.PI/2; ring.position.y = 0.035;
+      scene.add(ring);
+      runeRings.push(ring);
+    });
+    // étoiles lointaines
+    const n = 260;
+    const pos = new Float32Array(n*3);
+    for (let i=0;i<n;i++){
+      const th = Math.random()*Math.PI*2;
+      const ph = Math.acos(0.12 + Math.random()*0.88);
+      pos[i*3] = Math.sin(ph)*Math.cos(th)*80;
+      pos[i*3+1] = Math.cos(ph)*80;
+      pos[i*3+2] = Math.sin(ph)*Math.sin(th)*80;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color:'#cfe3ff', size:1.6, sizeAttenuation:false, transparent:true, opacity:0.75, depthWrite:false, fog:false })));
+  }
+
+  function updateAmbient(dt, now){
+    for (const fl of ambientFlames){
+      const s = 1 + Math.sin(now*0.011 + fl.phase)*0.16 + Math.sin(now*0.027 + fl.phase*2)*0.08;
+      fl.mesh.scale.set(1, s, 1);
+      fl.mesh.position.y = fl.baseY + (s-1)*0.12;
+      if (fl.glow) fl.glow.material.opacity = 0.55 + (s-1)*0.9;
+    }
   }
 
   function buildFighterMesh(outfitColor, swordColor){
     const group = new THREE.Group();
     const accent = new THREE.Color(swordColor);
+    const mat = (color, o)=>new THREE.MeshStandardMaterial(Object.assign({ color, roughness:0.55, metalness:0.15 }, o || {}));
+    const dark = '#241705';
+    const gold = '#d9a441';
+    const capsule = (r, h)=> THREE.CapsuleGeometry ? new THREE.CapsuleGeometry(r, h, 4, 8) : new THREE.CylinderGeometry(r, r, h + r*2, 10);
 
-    const bodyGeo = THREE.CapsuleGeometry ? new THREE.CapsuleGeometry(0.4, 0.85, 4, 8) : new THREE.CylinderGeometry(0.4,0.4,1.2,10);
-    const body = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: outfitColor, roughness:0.5, metalness:0.2 }));
+    // ombre douce + anneau lumineux au sol
+    const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.72, 20), new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity:0.4, depthWrite:false }));
+    shadow.rotation.x = -Math.PI/2; shadow.position.y = 0.02; group.add(shadow);
+    const aura = new THREE.Mesh(new THREE.RingGeometry(0.64, 0.74, 28), new THREE.MeshBasicMaterial({ color: outfitColor, transparent:true, opacity:0.6, side:THREE.DoubleSide, depthWrite:false }));
+    aura.rotation.x = -Math.PI/2; aura.position.y = 0.03; group.add(aura);
+
+    // torse + plastron métallique + emblème lumineux
+    const body = new THREE.Mesh(capsule(0.4, 0.85), mat(outfitColor, { roughness:0.5, metalness:0.2 }));
     body.position.y = 0.95;
     group.add(body);
+    const plate = new THREE.Mesh(new THREE.SphereGeometry(0.4, 14, 10), mat('#cfd6e0', { roughness:0.28, metalness:0.85 }));
+    plate.scale.set(1.0, 0.82, 0.55); plate.position.set(0, 1.2, 0.2); group.add(plate);
+    const emblem = new THREE.Mesh(new THREE.OctahedronGeometry(0.09, 0), mat(swordColor, { metalness:0.5, roughness:0.2, emissive:accent, emissiveIntensity:0.7 }));
+    emblem.scale.set(1, 1.4, 0.6); emblem.position.set(0, 1.22, 0.42); group.add(emblem);
 
-    // ceinture
-    const belt = new THREE.Mesh(
-      new THREE.TorusGeometry(0.42, 0.045, 8, 20),
-      new THREE.MeshStandardMaterial({ color:'#241705', metalness:0.35, roughness:0.55 })
-    );
-    belt.rotation.x = Math.PI/2;
-    belt.position.y = 0.62;
-    group.add(belt);
+    // ceinture + boucle dorée
+    const belt = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.045, 8, 20), mat(dark, { metalness:0.35 }));
+    belt.rotation.x = Math.PI/2; belt.position.y = 0.62; group.add(belt);
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.06), mat(gold, { metalness:0.85, roughness:0.3 }));
+    buckle.position.set(0, 0.62, 0.43); group.add(buckle);
 
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.3,16,16), new THREE.MeshStandardMaterial({ color:'#f1c39a', roughness:0.6 }));
-    head.position.y = 1.75;
-    group.add(head);
+    // jambes articulées (pantalon, genouillères, bottes)
+    const makeLeg = (x)=>{
+      const pivot = new THREE.Group(); pivot.position.set(x, 0.7, 0.02);
+      const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.42, 8), mat('#1d2430', { roughness:0.8, metalness:0.05 }));
+      thigh.position.y = -0.2; pivot.add(thigh);
+      const knee = new THREE.Mesh(new THREE.SphereGeometry(0.095, 8, 8), mat(swordColor, { metalness:0.6, roughness:0.3, emissive:accent, emissiveIntensity:0.12 }));
+      knee.position.set(0, -0.4, 0.08); pivot.add(knee);
+      const boot = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.19, 0.32, 8), mat(dark, { roughness:0.6, metalness:0.1 }));
+      boot.position.set(0, -0.55, 0.02); pivot.add(boot);
+      group.add(pivot);
+      return pivot;
+    };
+    const legL = makeLeg(-0.16), legR = makeLeg(0.16);
 
-    // visière colorée (identité visuelle du combattant, assortie à la couleur d'épée)
-    const visor = new THREE.Mesh(
-      new THREE.BoxGeometry(0.52, 0.09, 0.32),
-      new THREE.MeshStandardMaterial({ color: swordColor, metalness:0.6, roughness:0.25, emissive: accent, emissiveIntensity:0.18 })
-    );
-    visor.position.set(0, 1.82, 0.02);
-    group.add(visor);
-
-    // yeux
-    const eyeMat = new THREE.MeshStandardMaterial({ color:'#1a1410', roughness:0.4 });
+    // tête, cheveux, crête, visière, yeux
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), mat('#f1c39a', { roughness:0.6, metalness:0 }));
+    head.position.y = 1.75; group.add(head);
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.315, 16, 10, 0, Math.PI*2, 0, Math.PI*0.42), mat('#2a1c14', { roughness:0.9, metalness:0 }));
+    hair.position.set(0, 1.77, -0.02); group.add(hair);
+    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 0.4), mat(swordColor, { metalness:0.6, roughness:0.25, emissive:accent, emissiveIntensity:0.25 }));
+    crest.position.set(0, 2.06, -0.04); group.add(crest);
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.09, 0.32), mat(swordColor, { metalness:0.6, roughness:0.25, emissive:accent, emissiveIntensity:0.18 }));
+    visor.position.set(0, 1.82, 0.02); group.add(visor);
+    const eyeMat = mat('#1a1410', { roughness:0.4, metalness:0 });
     const eyeGeo = new THREE.SphereGeometry(0.04, 8, 8);
     const eyeL = new THREE.Mesh(eyeGeo, eyeMat); eyeL.position.set(-0.1, 1.78, 0.26); group.add(eyeL);
     const eyeR = new THREE.Mesh(eyeGeo, eyeMat.clone()); eyeR.position.set(0.1, 1.78, 0.26); group.add(eyeR);
 
-    // épaulières
+    // épaulières à pointes
     const shoulderGeo = new THREE.SphereGeometry(0.21, 12, 12);
-    const shoulderMat = new THREE.MeshStandardMaterial({ color: outfitColor, metalness:0.55, roughness:0.3 });
-    const shoulderL = new THREE.Mesh(shoulderGeo, shoulderMat);
-    shoulderL.position.set(-0.45, 1.45, 0); group.add(shoulderL);
-    const shoulderR = new THREE.Mesh(shoulderGeo, shoulderMat.clone());
-    shoulderR.position.set(0.45, 1.45, 0); group.add(shoulderR);
+    const spikeGeo = new THREE.ConeGeometry(0.06, 0.24, 6);
+    [-1, 1].forEach(side=>{
+      const pad = new THREE.Mesh(shoulderGeo, mat(outfitColor, { metalness:0.55, roughness:0.3 }));
+      pad.position.set(side*0.45, 1.45, 0); group.add(pad);
+      const spike = new THREE.Mesh(spikeGeo, mat(swordColor, { metalness:0.7, roughness:0.25, emissive:accent, emissiveIntensity:0.15 }));
+      spike.position.set(side*0.55, 1.63, 0); spike.rotation.z = -side*0.7; group.add(spike);
+    });
 
-    // bras
-    const armGeo = THREE.CapsuleGeometry ? new THREE.CapsuleGeometry(0.09, 0.5, 4, 6) : new THREE.CylinderGeometry(0.09,0.09,0.7,8);
-    const armMat = new THREE.MeshStandardMaterial({ color: outfitColor, roughness:0.55, metalness:0.15 });
-    const armL = new THREE.Mesh(armGeo, armMat);
-    armL.position.set(-0.47, 1.05, 0); armL.rotation.z = 0.14; group.add(armL);
-    const armR = new THREE.Mesh(armGeo, armMat.clone());
-    armR.position.set(0.47, 1.05, 0); armR.rotation.z = -0.14; group.add(armR);
+    // bras articulés + gants
+    const makeArm = (side)=>{
+      const pivot = new THREE.Group(); pivot.position.set(side*0.47, 1.42, 0);
+      const arm = new THREE.Mesh(capsule(0.09, 0.5), mat(outfitColor, { roughness:0.55 }));
+      arm.position.y = -0.33; arm.rotation.z = -side*0.14; pivot.add(arm);
+      const glove = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), mat('#3a2a1a', { roughness:0.8, metalness:0.05 }));
+      glove.position.set(side*0.04, -0.66, 0); pivot.add(glove);
+      group.add(pivot);
+      return pivot;
+    };
+    const armL = makeArm(-1), armR = makeArm(1);
 
-    // bottes
-    const bootGeo = new THREE.CylinderGeometry(0.16, 0.19, 0.3, 8);
-    const bootMat = new THREE.MeshStandardMaterial({ color:'#241705', roughness:0.6, metalness:0.1 });
-    const bootL = new THREE.Mesh(bootGeo, bootMat); bootL.position.set(-0.16, 0.15, 0.03); group.add(bootL);
-    const bootR = new THREE.Mesh(bootGeo, bootMat.clone()); bootR.position.set(0.16, 0.15, 0.03); group.add(bootR);
-
-    // cape
+    // cape + liseré doré
     const cape = new THREE.Mesh(
       new THREE.PlaneGeometry(0.68, 1.05, 1, 4),
-      new THREE.MeshStandardMaterial({ color: new THREE.Color(outfitColor).multiplyScalar(0.55), roughness:1, metalness:0, side: THREE.DoubleSide })
+      mat(new THREE.Color(outfitColor).multiplyScalar(0.55), { roughness:1, metalness:0, side: THREE.DoubleSide })
     );
     cape.position.set(0, 0.95, -0.3);
     cape.rotation.x = 0.1;
+    const trim = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.07), mat(gold, { metalness:0.7, roughness:0.35, side: THREE.DoubleSide }));
+    trim.position.set(0, -0.49, 0.004); cape.add(trim);
     group.add(cape);
 
-    const sword = new THREE.Mesh(new THREE.BoxGeometry(0.09,1.0,0.05), new THREE.MeshStandardMaterial({ color: swordColor, metalness:0.65, roughness:0.2, emissive: accent, emissiveIntensity:0.1 }));
+    // épée : lame + pointe + garde + poignée + pommeau + fil lumineux
+    const swordMat = mat(swordColor, { metalness:0.65, roughness:0.2, emissive:accent, emissiveIntensity:0.12 });
+    const sword = new THREE.Mesh(new THREE.BoxGeometry(0.09, 1.0, 0.05), swordMat);
     sword.position.set(0.5, 1.0, 0.1);
     sword.rotation.z = -0.4;
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.0636, 0.16, 4), mat(swordColor, { metalness:0.65, roughness:0.2, emissive:accent, emissiveIntensity:0.12 }));
+    tip.position.y = 0.58; tip.rotation.y = Math.PI/4; tip.scale.z = 0.55; sword.add(tip);
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.1), mat(gold, { metalness:0.85, roughness:0.3 }));
+    guard.position.y = -0.5; sword.add(guard);
+    const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.16, 8), mat(dark, { roughness:0.7 }));
+    hilt.position.y = -0.59; sword.add(hilt);
+    const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), mat(gold, { metalness:0.85, roughness:0.3 }));
+    pommel.position.y = -0.7; sword.add(pommel);
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.88, 0.056), new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0.5 }));
+    edge.position.y = 0.02; sword.add(edge);
     group.add(sword);
+
     const healthBar = makeHealthBar();
     group.add(healthBar);
+    group.userData.limbs = { legL, legR, armL, armR };
     return { group, sword, healthBar, cape };
   }
 
@@ -1765,6 +2004,9 @@ const Match = (()=>{
     sunLight = new THREE.DirectionalLight('#ffe6bd', 1.0);
     sunLight.position.set(10, 16, 6);
     scene.add(sunLight);
+    const rimLight = new THREE.DirectionalLight('#6fa8ff', 0.35); // lumière froide d'appoint
+    rimLight.position.set(-8, 6, -10);
+    scene.add(rimLight);
     originalHemiIntensity = hemiLight.intensity;
     originalSunIntensity = sunLight.intensity;
 
@@ -1843,6 +2085,12 @@ const Match = (()=>{
     }
     iceVisuals.forEach(v=>{ try{ scene.remove(v); v.geometry.dispose(); v.material.dispose(); }catch(_){ } });
     iceVisuals = [];
+    cows.forEach(c=>disposeObject(c.mesh)); cows = [];
+    mortars.forEach(m=>disposeObject(m.mesh)); mortars = [];
+    rocks.forEach(r=>{ disposeObject(r.rock); disposeObject(r.marker); }); rocks = [];
+    bolts.forEach(b=>disposeObject(b.group)); bolts = [];
+    playerBlindUntil = 0;
+    hideEquipmentFx();
   }
 
   function startEquipmentCooldown(type){
@@ -1898,6 +2146,569 @@ const Match = (()=>{
     },3000);
   }
 
+  /* ====================================================================
+     NOUVEAUX ÉQUIPEMENTS : vache enragée, éclair, mortier de lion
+     (utilisables par le joueur ET par les robots)
+  ==================================================================== */
+  function disposeObject(obj){
+    if (!obj) return;
+    try{ scene.remove(obj); }catch(_){ }
+    obj.traverse(o=>{
+      if (o.geometry) o.geometry.dispose();
+      if (o.material){
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        mats.forEach(m=>{ if (m.map) m.map.dispose(); m.dispose(); });
+      }
+    });
+  }
+
+  function equipTargets(owner){
+    return fighters.filter(f=>f !== owner && f.alive && !f.permanentlyEliminated);
+  }
+  function equipAttacksBlocked(){
+    return currentGameMode === 'maxitrone' && !maxitroneCombatStarted;
+  }
+  function nearestTarget(owner){
+    let best = null, bd = Infinity;
+    for (const f of equipTargets(owner)){
+      const d = dist2(owner.pos.x, owner.pos.z, f.pos.x, f.pos.z);
+      if (d < bd){ bd = d; best = f; }
+    }
+    return best ? { fighter: best, dist: Math.sqrt(bd) } : null;
+  }
+
+  // ---- calques d'écran : éclair blanc, brouillard, alerte ----
+  function ensureEquipmentFx(){
+    const screen = document.getElementById('screen-match');
+    if (!screen) return;
+    if (!fxFlash){ fxFlash = document.createElement('div'); fxFlash.className = 'eq-flash'; screen.appendChild(fxFlash); }
+    if (!fxBlind){ fxBlind = document.createElement('div'); fxBlind.className = 'eq-blind'; screen.appendChild(fxBlind); }
+    if (!fxWarning){ fxWarning = document.createElement('div'); fxWarning.className = 'eq-warning'; screen.appendChild(fxWarning); }
+  }
+  function flashScreen(intensity){
+    ensureEquipmentFx();
+    if (!fxFlash) return;
+    fxFlash.style.setProperty('--eq-flash', String(intensity));
+    fxFlash.classList.remove('show');
+    void fxFlash.offsetWidth;
+    fxFlash.classList.add('show');
+  }
+  function showWarning(text, ms){
+    ensureEquipmentFx();
+    if (!fxWarning) return;
+    fxWarning.textContent = text;
+    fxWarning.classList.add('show');
+    clearTimeout(warningTimer);
+    warningTimer = setTimeout(()=>{ if (fxWarning) fxWarning.classList.remove('show'); }, ms);
+  }
+  function hideEquipmentFx(){
+    clearTimeout(warningTimer);
+    if (fxFlash) fxFlash.classList.remove('show');
+    if (fxBlind) fxBlind.classList.remove('show');
+    if (fxWarning) fxWarning.classList.remove('show');
+  }
+
+  // ---- petite étiquette 3D (compte à rebours de la vache) ----
+  function makeLabelSprite(){
+    const canvas = document.createElement('canvas');
+    canvas.width = 160; canvas.height = 56;
+    const ctx = canvas.getContext('2d');
+    const texture = new THREE.CanvasTexture(canvas);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map:texture, transparent:true, depthTest:false }));
+    sprite.scale.set(1.5, 0.52, 1);
+    sprite.userData = { canvas, ctx, texture, key:'' };
+    return sprite;
+  }
+  function setLabel(sprite, text, color){
+    const u = sprite.userData;
+    const key = text + '|' + color;
+    if (u.key === key) return;
+    u.key = key;
+    u.ctx.clearRect(0, 0, u.canvas.width, u.canvas.height);
+    u.ctx.fillStyle = 'rgba(8,12,18,.8)';
+    u.ctx.fillRect(4, 4, u.canvas.width-8, u.canvas.height-8);
+    u.ctx.strokeStyle = color; u.ctx.lineWidth = 3;
+    u.ctx.strokeRect(4, 4, u.canvas.width-8, u.canvas.height-8);
+    u.ctx.font = '700 30px Rajdhani, sans-serif';
+    u.ctx.textAlign = 'center'; u.ctx.textBaseline = 'middle';
+    u.ctx.fillStyle = color;
+    u.ctx.fillText(text, u.canvas.width/2, u.canvas.height/2 + 2);
+    u.texture.needsUpdate = true;
+  }
+
+  function drawBar(sprite, ratio, color){
+    const u = sprite.userData;
+    u.context.clearRect(0, 0, u.canvas.width, u.canvas.height);
+    u.context.fillStyle = 'rgba(5,9,14,.85)';
+    u.context.fillRect(0, 0, u.canvas.width, u.canvas.height);
+    u.context.fillStyle = color;
+    u.context.fillRect(3, 3, (u.canvas.width-6)*Math.max(0, Math.min(1, ratio)), u.canvas.height-6);
+    u.texture.needsUpdate = true;
+  }
+
+  /* ---------------------------- VACHE ENRAGÉE ---------------------------- */
+  function buildCowMesh(){
+    const g = new THREE.Group();
+    const std = (c, r)=>new THREE.MeshStandardMaterial({ color:c, roughness:(r === undefined ? 0.85 : r), metalness:0 });
+    const white = std('#f5f2ea'), black = std('#1c1a19'), pink = std('#eaa4ab', 0.7), hornMat = std('#efe2bd', 0.5);
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.8, 1.6), white);
+    body.position.y = 1.05; g.add(body);
+    [[-0.46, 1.15, 0.25, 0.05, 0.5, 0.55], [0.46, 1.0, -0.3, 0.05, 0.5, 0.6], [0, 1.46, -0.1, 0.55, 0.05, 0.6], [-0.46, 0.85, -0.45, 0.05, 0.35, 0.4]].forEach(s=>{
+      const spot = new THREE.Mesh(new THREE.BoxGeometry(s[3], s[4], s[5]), black);
+      spot.position.set(s[0], s[1], s[2]); g.add(spot);
+    });
+    const udder = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), pink);
+    udder.position.set(0, 0.6, -0.35); udder.scale.set(1, 0.7, 1); g.add(udder);
+
+    const legs = [];
+    [[-0.3, 0.55], [0.3, 0.55], [-0.3, -0.55], [0.3, -0.55]].forEach(p=>{
+      const pivot = new THREE.Group(); pivot.position.set(p[0], 0.68, p[1]);
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.68, 0.2), white); leg.position.y = -0.34; pivot.add(leg);
+      const hoof = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.24), black); hoof.position.y = -0.68; pivot.add(hoof);
+      g.add(pivot); legs.push(pivot);
+    });
+
+    const head = new THREE.Group(); head.position.set(0, 1.3, 0.85);
+    const skull = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.5, 0.5), white); skull.position.set(0, 0, 0.12); head.add(skull);
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.24, 0.22), pink); snout.position.set(0, -0.12, 0.4); head.add(snout);
+    [-1, 1].forEach(s=>{
+      const nostril = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.04), black); nostril.position.set(s*0.1, -0.1, 0.52); head.add(nostril);
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.3, 6), hornMat); horn.position.set(s*0.22, 0.34, 0.1); horn.rotation.z = -s*0.5; head.add(horn);
+      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.12), white); ear.position.set(s*0.36, 0.18, 0.05); ear.rotation.z = s*0.3; head.add(ear);
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.045, 0.06), black); brow.position.set(s*0.18, 0.2, 0.38); brow.rotation.z = -s*0.45; head.add(brow);
+    });
+    const eyeMat = new THREE.MeshStandardMaterial({ color:'#ff2a2a', emissive:'#ff0000', emissiveIntensity:1.2, roughness:0.4 });
+    [-1, 1].forEach(s=>{
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMat);
+      eye.position.set(s*0.2, 0.08, 0.37); head.add(eye);
+    });
+    g.add(head);
+
+    const tail = new THREE.Group(); tail.position.set(0, 1.35, -0.8);
+    const tailMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.6, 6), black); tailMesh.position.y = -0.3; tail.add(tailMesh);
+    const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), black); tuft.position.y = -0.62; tail.add(tuft);
+    g.add(tail);
+
+    g.scale.setScalar(1.15);
+    return { group:g, head, legs, tail, eyeMat };
+  }
+
+  function spawnCow(owner){
+    const parts = buildCowMesh();
+    let x = owner.pos.x + Math.sin(owner.rotY)*2.4, z = owner.pos.z + Math.cos(owner.rotY)*2.4;
+    const r = Math.hypot(x, z);
+    if (r > ARENA_RADIUS-1){ x *= (ARENA_RADIUS-1)/r; z *= (ARENA_RADIUS-1)/r; }
+    const rot = Math.random()*Math.PI*2;
+    parts.group.position.set(x, 0, z);
+    parts.group.rotation.y = rot;
+    const label = makeLabelSprite();
+    label.position.y = 2.9;
+    parts.group.add(label);
+    scene.add(parts.group);
+    addEffect({ x, z }, '#f5f2ea', 800);
+    addEffect({ x, z }, '#ffb648', 1000);
+    cows.push({
+      owner, mesh:parts.group, head:parts.head, legs:parts.legs, tail:parts.tail, eyeMat:parts.eyeMat, label,
+      x, z, rot, born:performance.now(), state:'graze', target:null, chargeStart:0, dustAt:0, hitCooldown:0, dead:false
+    });
+  }
+
+  function removeCow(c){
+    c.dead = true;
+    addEffect({ x:c.x, z:c.z }, '#f5f2ea', 700);
+    disposeObject(c.mesh);
+  }
+  function pickCowTarget(c){
+    const list = equipTargets(c.owner);
+    return list.length ? list[Math.floor(Math.random()*list.length)] : null;
+  }
+  function announceCowTarget(c){
+    if (!c.target) return;
+    if (c.target.isPlayer) showWarning('🐄 LA VACHE FONCE SUR TOI !', 3500);
+    else if (c.owner.isPlayer) setMatchStatus(`🐄 La vache fonce sur ${c.target.name} !`, 2200);
+    else setMatchStatus(`🐄 La vache de ${c.owner.name} charge ${c.target.name} !`, 2200);
+  }
+
+  function updateCows(dt, now){
+    for (const c of cows){
+      if (c.dead) continue;
+      if (c.state === 'graze'){
+        const left = COW_GRAZE_SECONDS - (now - c.born)/1000;
+        c.head.rotation.x = 0.75 + Math.sin(now*0.007)*0.12;   // tête baissée : elle broute
+        c.head.position.y = 1.05 + Math.sin(now*0.007)*0.02;
+        c.tail.rotation.z = Math.sin(now*0.008)*0.5;
+        if (left < 2){                                         // elle s'énerve : patte qui gratte, yeux rouges
+          c.legs[0].rotation.x = Math.sin(now*0.03)*0.6;
+          c.eyeMat.emissiveIntensity = 2.2;
+        }
+        setLabel(c.label, '🐄 ' + Math.ceil(Math.max(left, 0)), left < 3 ? '#ff6b6b' : '#f5f2ea');
+        if (left <= 0){
+          c.target = pickCowTarget(c);
+          if (!c.target){ removeCow(c); continue; }
+          c.state = 'charge';
+          c.chargeStart = now;
+          c.label.visible = false;
+          c.head.rotation.x = 0.25; c.head.position.y = 1.3;
+          announceCowTarget(c);
+        }
+      } else {
+        if (!c.target || !c.target.alive || c.target.permanentlyEliminated){
+          c.target = pickCowTarget(c);
+          if (!c.target){ removeCow(c); continue; }
+          announceCowTarget(c);
+        }
+        if ((now - c.chargeStart)/1000 > COW_CHARGE_TIMEOUT){ removeCow(c); continue; }
+        const dx = c.target.pos.x - c.x, dz = c.target.pos.z - c.z;
+        const d = Math.hypot(dx, dz) || 1;
+        const step = Math.min(d, COW_SPEED*dt);
+        c.x += dx/d*step; c.z += dz/d*step;
+        c.rot = stepTowardAngle(c.rot, Math.atan2(dx, dz), Math.PI*5*dt);
+        const ph = now*0.02;
+        c.legs[0].rotation.x = Math.sin(ph)*0.9;  c.legs[3].rotation.x = Math.sin(ph)*0.9;
+        c.legs[1].rotation.x = -Math.sin(ph)*0.9; c.legs[2].rotation.x = -Math.sin(ph)*0.9;
+        c.head.rotation.x = 0.3 + Math.sin(ph*0.5)*0.08;
+        c.mesh.position.y = Math.abs(Math.sin(ph))*0.12;
+        if (now > c.dustAt){ addEffect({ x:c.x, z:c.z }, '#d9b98a', 450); c.dustAt = now + 140; }
+        if (d < 1.0 && now >= c.hitCooldown){
+          const victim = c.target;
+          c.hitCooldown = now + 500;
+          addEffect(victim.pos, '#ff3b3b', 700);
+          addEffect(victim.pos, '#ffffff', 500);
+          if (victim.isPlayer) flashScreen(0.45);
+          applyDamage(c.owner, victim, COW_DAMAGE);
+          if (!victim.alive){ removeCow(c); continue; }   // elle disparaît après son élimination
+        }
+      }
+      c.mesh.position.x = c.x; c.mesh.position.z = c.z; c.mesh.rotation.y = c.rot;
+    }
+    cows = cows.filter(c=>!c.dead);
+  }
+
+  /* -------------------------------- ÉCLAIR -------------------------------- */
+  function boltSegment(a, b, radius, material){
+    const dir = new THREE.Vector3().subVectors(b, a);
+    const len = dir.length();
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, len, 5), material);
+    m.position.copy(a).add(b).multiplyScalar(0.5);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+    return m;
+  }
+
+  // frappe le combattant le plus proche ; renvoie la victime (ou null)
+  function strikeBolt(owner){
+    const near = nearestTarget(owner);
+    if (!near) return null;
+    const target = near.fighter;
+    const tx = target.pos.x, tz = target.pos.z;
+    const now = performance.now();
+
+    const group = new THREE.Group();
+    const coreMat = new THREE.MeshBasicMaterial({ color:'#ffffff' });
+    const glowMat = new THREE.MeshBasicMaterial({ color:'#7fc4ff', transparent:true, opacity:0.55, depthWrite:false });
+    const pts = [];
+    const segs = 9;
+    for (let i=0;i<=segs;i++){
+      const jitter = i === segs ? 0 : (Math.random()-0.5)*1.8;
+      pts.push(new THREE.Vector3(tx + jitter, 16*(1 - i/segs), tz + (i === segs ? 0 : (Math.random()-0.5)*1.8)));
+    }
+    for (let i=0;i<segs;i++){
+      group.add(boltSegment(pts[i], pts[i+1], 0.06, coreMat));
+      group.add(boltSegment(pts[i], pts[i+1], 0.2, glowMat));
+    }
+    for (let b=0;b<2;b++){
+      const k = 2 + Math.floor(Math.random()*4);
+      const p0 = pts[k];
+      const p1 = new THREE.Vector3(p0.x + (Math.random()-0.5)*3.5, p0.y - 2.2, p0.z + (Math.random()-0.5)*3.5);
+      const p2 = new THREE.Vector3(p1.x + (Math.random()-0.5)*2.5, p1.y - 2.2, p1.z + (Math.random()-0.5)*2.5);
+      group.add(boltSegment(p0, p1, 0.04, coreMat));
+      group.add(boltSegment(p1, p2, 0.035, coreMat));
+    }
+    const flashMat = new THREE.MeshBasicMaterial({ color:'#bfe3ff', transparent:true, opacity:0.85, depthWrite:false, blending:THREE.AdditiveBlending });
+    const flash = new THREE.Mesh(new THREE.SphereGeometry(0.9, 14, 10), flashMat);
+    flash.position.set(tx, 0.5, tz);
+    group.add(flash);
+    const scorchMat = new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity:0.55, depthWrite:false });
+    const scorch = new THREE.Mesh(new THREE.CircleGeometry(0.95, 20), scorchMat);
+    scorch.rotation.x = -Math.PI/2; scorch.position.set(tx, 0.03, tz);
+    group.add(scorch);
+    scene.add(group);
+    bolts.push({ group, bolt:null, flash, flashMat, scorchMat, born:now });
+
+    addEffect(target.pos, '#8fd3ff', 700);
+    addEffect(target.pos, '#ffffff', 500);
+    const player = getPlayer();
+    const nearPlayer = player && Math.hypot(player.pos.x - tx, player.pos.z - tz) < 8;
+    if (target.isPlayer) flashScreen(0.6); else if (nearPlayer) flashScreen(0.22);
+    if (!owner.isPlayer && target.isPlayer) setMatchStatus(`⚡ ${owner.name} t'a foudroyé !`, 2200);
+    applyDamage(owner, target, BOLT_DAMAGE);
+    return target;
+  }
+
+  function updateBolts(dt, now){
+    for (const b of bolts){
+      const t = (now - b.born)/1000;
+      b.group.children.forEach(ch=>{
+        if (ch === b.flash || ch.geometry.type === 'CircleGeometry') return;
+        ch.visible = t < 0.34 && (t < 0.1 || Math.floor(t*40)%2 === 0);   // scintillement
+      });
+      b.flash.scale.setScalar(1 + t*5);
+      b.flashMat.opacity = Math.max(0, 0.85 - t*2);
+      b.scorchMat.opacity = Math.max(0, 0.55 - t*0.22);
+      if (t > 2.5){ b.done = true; disposeObject(b.group); }
+    }
+    bolts = bolts.filter(b=>!b.done);
+  }
+
+  /* ---------------------------- MORTIER DE LION ---------------------------- */
+  function buildMortarMesh(){
+    const g = new THREE.Group();
+    const std = (c, r, m, extra)=>new THREE.MeshStandardMaterial(Object.assign({ color:c, roughness:r, metalness:m }, extra || {}));
+    const stone = std('#6d665a', 0.9, 0.05), iron = std('#2b2f36', 0.5, 0.7);
+    const gold = std('#e0a93a', 0.35, 0.85, { emissive:'#6b4300', emissiveIntensity:0.35 });
+
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.1, 0.3, 12), stone); base.position.y = 0.15; g.add(base);
+    const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.8, 0.12, 12), iron); plate.position.y = 0.36; g.add(plate);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.78, 0.05, 6, 20), gold); ring.rotation.x = Math.PI/2; ring.position.y = 0.43; g.add(ring);
+
+    const pivot = new THREE.Group(); pivot.position.set(0, 0.62, 0);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 1.35, 14), iron);
+    barrel.rotation.x = 0.95; barrel.position.set(0, 0.39, 0.55); pivot.add(barrel);
+    [-0.3, 0.3].forEach(y=>{
+      const band = new THREE.Mesh(new THREE.TorusGeometry(0.39 - y*0.1, 0.05, 6, 16), gold);
+      band.rotation.x = Math.PI/2; band.position.y = y; barrel.add(band);
+    });
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.06, 6, 16), gold);
+    rim.rotation.x = Math.PI/2; rim.position.y = 0.675; barrel.add(rim);
+
+    // tête de lion dorée sous la gueule du canon
+    const mane = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.1, 8, 18), std('#c9822b', 0.6, 0.4)); mane.position.set(0, 0.18, 0.95); pivot.add(mane);
+    const face = new THREE.Mesh(new THREE.SphereGeometry(0.27, 14, 10), std('#e8b64a', 0.5, 0.5)); face.scale.set(1, 1, 0.8); face.position.set(0, 0.18, 0.95); pivot.add(face);
+    const snout = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), std('#f3d58a', 0.5, 0.3)); snout.position.set(0, 0.1, 1.2); pivot.add(snout);
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), std('#2a1a10', 0.6, 0)); nose.position.set(0, 0.15, 1.31); pivot.add(nose);
+    [-1, 1].forEach(s=>{
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), std('#1a1008', 0.4, 0)); eye.position.set(s*0.1, 0.26, 1.14); pivot.add(eye);
+      const ear = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), std('#e8b64a', 0.5, 0.5)); ear.position.set(s*0.22, 0.42, 0.9); pivot.add(ear);
+    });
+
+    // flash de tir à la bouche du canon
+    const flash = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), new THREE.MeshBasicMaterial({ color:'#ffb347', transparent:true, opacity:0.9, depthWrite:false, blending:THREE.AdditiveBlending }));
+    flash.position.set(0, 0.78, 1.09); flash.visible = false; pivot.add(flash);
+    g.add(pivot);
+
+    const bar = makeHealthBar();
+    bar.scale.set(1.6, 0.24, 1);
+    bar.position.y = 2.35;
+    g.add(bar);
+    return { group:g, pivot, bar, flash };
+  }
+
+  function placeMortar(owner){
+    const parts = buildMortarMesh();
+    let x = owner.pos.x + Math.sin(owner.rotY)*1.7, z = owner.pos.z + Math.cos(owner.rotY)*1.7;
+    const r = Math.hypot(x, z);
+    if (r > ARENA_RADIUS-1.2){ x *= (ARENA_RADIUS-1.2)/r; z *= (ARENA_RADIUS-1.2)/r; }
+    if (obstacles.some(o=>dist2(x, z, o.x, o.z) < (o.radius+0.9)*(o.radius+0.9))){ x = owner.pos.x; z = owner.pos.z; }
+    parts.group.position.set(x, 0, z);
+    parts.pivot.rotation.y = owner.rotY;
+    scene.add(parts.group);
+    addEffect({ x, z }, '#ffb648', 900);
+    addEffect({ x, z }, '#d9b98a', 700);
+    const m = {
+      owner, mesh:parts.group, pivot:parts.pivot, bar:parts.bar, flash:parts.flash,
+      x, z, hp:MORTAR_HP, maxHp:MORTAR_HP, aim:owner.rotY, recoil:0, flashUntil:0, hitUntil:0,
+      nextFire: performance.now() + MORTAR_FIRE_INTERVAL*1000, dead:false
+    };
+    drawBar(m.bar, 1, '#ffb648');
+    mortars.push(m);
+    return m;
+  }
+
+  function destroyMortar(m, attacker){
+    m.dead = true;
+    addEffect({ x:m.x, z:m.z }, '#ff9d3d', 800);
+    addEffect({ x:m.x, z:m.z }, '#ff3b3b', 600);
+    addEffect({ x:m.x, z:m.z }, '#ffffff', 450);
+    disposeObject(m.mesh);
+    pushElimFeed(attacker.name, 'le mortier de ' + m.owner.name);
+    if (attacker.isPlayer) setMatchStatus('🦁 Mortier détruit !', 1800);
+    else if (m.owner.isPlayer) setMatchStatus(`🦁 ${attacker.name} a détruit ton mortier !`, 2200);
+  }
+
+  function damageMortar(attacker, m, dmg){
+    if (m.dead) return;
+    m.hp -= dmg;
+    drawBar(m.bar, m.hp / m.maxHp, m.hp > m.maxHp*0.4 ? '#ffb648' : '#ff5c68');
+    addEffect({ x:m.x, z:m.z }, '#ffb648', 450);
+    m.hitUntil = performance.now() + 120;
+    if (m.hp <= 0) destroyMortar(m, attacker);
+  }
+
+  // un coup d'épée touche les mortiers ennemis devant le combattant
+  function hitMortars(attacker){
+    for (const m of mortars){
+      if (m.dead || m.owner === attacker) continue;
+      const dx = m.x - attacker.pos.x, dz = m.z - attacker.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d > ATTACK_RANGE + 0.7) continue;
+      let diff = Math.abs(Math.atan2(dx, dz) - attacker.rotY);
+      diff = Math.min(diff, Math.PI*2 - diff);
+      if (diff < 1.3 || d < 1.0) damageMortar(attacker, m, DAMAGE);
+    }
+  }
+
+  function nearestHostileMortar(f, maxDist){
+    let best = null, bd = maxDist*maxDist;
+    for (const m of mortars){
+      if (m.dead || m.owner === f) continue;
+      const d = dist2(f.pos.x, f.pos.z, m.x, m.z);
+      if (d < bd){ bd = d; best = m; }
+    }
+    return best;
+  }
+
+  function fireMortar(m, now){
+    const list = equipTargets(m.owner);
+    if (!list.length) return;
+    const target = list[Math.floor(Math.random()*list.length)];
+    m.aim = Math.atan2(target.pos.x - m.x, target.pos.z - m.z);
+    m.pivot.rotation.y = m.aim;
+    m.recoil = 1;
+    m.flashUntil = now + 180;
+    const start = new THREE.Vector3(m.x + Math.sin(m.aim)*1.09, 1.4, m.z + Math.cos(m.aim)*1.09);
+
+    // rocher
+    const rock = new THREE.Group();
+    const stoneMesh = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.45, 0),
+      new THREE.MeshStandardMaterial({ color:'#4a443c', roughness:0.95, metalness:0, emissive:'#ff5a14', emissiveIntensity:0.55, flatShading:true })
+    );
+    rock.add(stoneMesh);
+    rock.add(new THREE.Mesh(new THREE.SphereGeometry(0.66, 10, 8), new THREE.MeshBasicMaterial({ color:'#ff8a3a', transparent:true, opacity:0.3, depthWrite:false, blending:THREE.AdditiveBlending })));
+    rock.position.copy(start);
+    scene.add(rock);
+
+    // le joueur visé est « entouré » : anneau, cage translucide et anneau qui se resserre
+    const marker = new THREE.Group();
+    const inner = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.06, 8, 32), new THREE.MeshBasicMaterial({ color:'#ff3b3b', transparent:true, opacity:0.95, depthWrite:false }));
+    inner.rotation.x = Math.PI/2;
+    const outer = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.045, 8, 32), new THREE.MeshBasicMaterial({ color:'#ffb648', transparent:true, opacity:0.85, depthWrite:false }));
+    outer.rotation.x = Math.PI/2;
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.95, 28), new THREE.MeshBasicMaterial({ color:'#ff3b3b', transparent:true, opacity:0.16, depthWrite:false, side:THREE.DoubleSide }));
+    disc.rotation.x = -Math.PI/2; disc.position.y = -0.09;
+    const cage = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 2.2, 24, 1, true), new THREE.MeshBasicMaterial({ color:'#ff3b3b', transparent:true, opacity:0.14, depthWrite:false, side:THREE.DoubleSide }));
+    cage.position.y = 1.0;
+    marker.add(inner, outer, disc, cage);
+    marker.position.set(target.pos.x, 0.12, target.pos.z);
+    scene.add(marker);
+
+    rocks.push({ mortar:m, target, rock, marker, inner, outer, start, born:now, dur:MORTAR_FLIGHT_TIME*1000, lastX:target.pos.x, lastZ:target.pos.z, done:false });
+    addEffect({ x:start.x, z:start.z }, '#ffb347', 500);
+    if (target.isPlayer){
+      showWarning('⚠ MORTIER SUR TOI !', 4200);
+      setMatchStatus(`🦁 Le mortier de ${m.owner.name} te vise : il va atterrir dans ${MORTAR_FLIGHT_TIME} secondes !`, 3500);
+    } else if (m.owner.isPlayer){
+      setMatchStatus(`🦁 Ton mortier vise ${target.name}`, 2000);
+    }
+  }
+
+  function updateMortars(dt, now){
+    for (const m of mortars){
+      if (m.dead) continue;
+      if (now >= m.nextFire){ fireMortar(m, now); m.nextFire = now + MORTAR_FIRE_INTERVAL*1000; }
+      m.recoil = Math.max(0, m.recoil - dt*3);
+      m.pivot.scale.y = 1 - m.recoil*0.08;
+      m.flash.visible = now < m.flashUntil;
+      m.mesh.scale.setScalar(now < m.hitUntil ? 1.05 : 1);
+    }
+    mortars = mortars.filter(m=>!m.dead);
+  }
+
+  function explodeRock(r){
+    const x = r.lastX, z = r.lastZ;
+    addEffect({ x, z }, '#ff3b3b', 800);
+    addEffect({ x, z }, '#ff9d3d', 650);
+    addEffect({ x, z }, '#ffffff', 450);
+    const player = getPlayer();
+    if (player && Math.hypot(player.pos.x - x, player.pos.z - z) < 6) flashScreen(r.target.isPlayer ? 0.4 : 0.15);
+    if (r.target.alive && !r.target.permanentlyEliminated) applyDamage(r.mortar.owner, r.target, MORTAR_DAMAGE);
+    r.done = true;
+    disposeObject(r.rock);
+    disposeObject(r.marker);
+  }
+
+  function updateRocks(dt, now){
+    for (const r of rocks){
+      if (r.done) continue;
+      const t = Math.min(1, (now - r.born)/r.dur);
+      const alive = r.target.alive && !r.target.permanentlyEliminated;
+      if (alive){ r.lastX = r.target.pos.x; r.lastZ = r.target.pos.z; }
+      r.marker.visible = alive;
+      r.marker.position.set(r.lastX, 0.12, r.lastZ);
+      r.outer.scale.setScalar(2.6 - 1.6*t);                 // l'anneau extérieur se resserre jusqu'à l'impact
+      r.inner.material.opacity = 0.6 + 0.4*Math.sin(now*0.02);
+      r.rock.position.set(
+        r.start.x + (r.lastX - r.start.x)*t,
+        r.start.y + (0.6 - r.start.y)*t + Math.sin(Math.PI*t)*12,
+        r.start.z + (r.lastZ - r.start.z)*t
+      );
+      r.rock.rotation.x += dt*5;
+      r.rock.rotation.z += dt*3;
+      if (t >= 1) explodeRock(r);
+    }
+    rocks = rocks.filter(r=>!r.done);
+  }
+
+  /* --------------------- ROBOTS : ils utilisent les équipements --------------------- */
+  function botUseEquipment(f){
+    if (equipAttacksBlocked()) return;
+    const now = performance.now();
+    if (!f.botEquip){
+      f.botEquip = [...ALL_EQUIPMENT].sort(()=>Math.random()-0.5).slice(0, 3);
+      f.botCd = {};
+      f.botNextThink = now + 4000 + Math.random()*5000;
+    }
+    if (now < f.botNextThink) return;
+    f.botNextThink = now + 900 + Math.random()*1300;
+    const near = nearestTarget(f);
+    if (!near) return;
+    const order = [...f.botEquip].sort(()=>Math.random()-0.5);
+    for (const type of order){
+      if ((f.botCd[type] || 0) > now) continue;
+      let used = false;
+      if (type === 'heal'){
+        if (f.hp < MAX_HP*0.4){
+          f.hp = MAX_HP; updateHealthBar(f); addEffect(f.pos, '#45d6c4', 900); used = true;
+        }
+      } else if (type === 'ice'){
+        if (near.dist < 4.5 && Math.random() < 0.75){
+          near.fighter.frozenUntil = now + 3000;
+          createIceVisual(near.fighter);
+          addEffect(near.fighter.pos, '#8ed8ff', 1000);
+          if (near.fighter.isPlayer) setMatchStatus(`❄ ${f.name} t'a gelé 3 secondes !`, 2500);
+          used = true;
+        }
+      } else if (type === 'fog'){
+        const p = getPlayer();
+        if (p && p.alive && Math.hypot(p.pos.x - f.pos.x, p.pos.z - f.pos.z) < 7 && Math.random() < 0.4){
+          playerBlindUntil = now + 7000;
+          setMatchStatus(`◌ ${f.name} t'aveugle avec du brouillard !`, 2500);
+          used = true;
+        }
+      } else if (type === 'cow'){
+        if (Math.random() < 0.35){ spawnCow(f); used = true; }
+      } else if (type === 'bolt'){
+        if (near.dist < 9 && Math.random() < 0.5){ strikeBolt(f); used = true; }
+      } else if (type === 'mortar'){
+        if (!mortars.some(m=>!m.dead && m.owner === f) && near.dist < 12 && Math.random() < 0.45){ placeMortar(f); used = true; }
+      }
+      if (used){
+        f.botCd[type] = now + (BOT_EQUIPMENT_COOLDOWN + Math.random()*10)*1000;
+        break;
+      }
+    }
+  }
+
   function useEquipment(type){
     if (!running || !APP.equipment.includes(type) || equipmentUsed.has(type)) return;
     const player = getPlayer();
@@ -1920,6 +2731,27 @@ const Match = (()=>{
       setTimeout(()=>{ if(performance.now() >= fogUntil && fogVisual){ try{scene.remove(fogVisual); fogVisual.geometry.dispose(); fogVisual.material.dispose();}catch(_){ } fogVisual=null; } },7200);
       return;
     }
+    if (type === 'cow' || type === 'bolt' || type === 'mortar'){
+      if (equipAttacksBlocked()){ setMatchStatus('Pas de combat pendant la première minute !', 1500); return; }
+      if (type === 'cow'){
+        spawnCow(player);
+        startEquipmentCooldown(type);
+        setMatchStatus(`🐄 La vache enragée broute… elle chargera dans ${COW_GRAZE_SECONDS} secondes`, 3000);
+        return;
+      }
+      if (type === 'bolt'){
+        const hit = strikeBolt(player);
+        if (!hit){ setMatchStatus('Aucun adversaire à foudroyer'); return; }
+        startEquipmentCooldown(type);
+        setMatchStatus(`⚡ ${hit.name} est foudroyé !`, 2000);
+        return;
+      }
+      if (mortars.some(m=>!m.dead && m.owner === player)){ setMatchStatus('Ton mortier est déjà en place'); return; }
+      placeMortar(player);
+      startEquipmentCooldown(type);
+      setMatchStatus('🦁 Mortier de lion posé ! Il tire toutes les 5 secondes', 2800);
+      return;
+    }
     const target = fighters
       .filter(f=>f !== player && f.alive)
       .sort((a,b)=>dist2(player.pos.x, player.pos.z, a.pos.x, a.pos.z) - dist2(player.pos.x, player.pos.z, b.pos.x, b.pos.z))[0];
@@ -1937,6 +2769,10 @@ const Match = (()=>{
   document.getElementById('ability-ice').addEventListener('click', ()=>useEquipment('ice'));
   document.getElementById('ability-fog').addEventListener('click', ()=>useEquipment('fog'));
   document.getElementById('ability-heal').addEventListener('click', ()=>useEquipment('heal'));
+  ['cow', 'bolt', 'mortar'].forEach(type=>{
+    const button = document.getElementById(`ability-${type}`);
+    if (button) button.addEventListener('click', ()=>useEquipment(type));
+  });
 
   // bouton "Équipement" au-dessus de l'attaque : affiche/masque les capacités utilisables
   document.getElementById('btn-match-equipment').addEventListener('click', ()=>{
@@ -1977,7 +2813,20 @@ const Match = (()=>{
       updateBotAI(f, dt);
     }
 
-    f.mesh.position.set(f.pos.x, 0, f.pos.z);
+    // marche : jambes et bras qui balancent, léger rebond, respiration à l'arrêt
+    const moved = Math.hypot(f.pos.x - (f.lastX === undefined ? f.pos.x : f.lastX), f.pos.z - (f.lastZ === undefined ? f.pos.z : f.lastZ));
+    f.lastX = f.pos.x; f.lastZ = f.pos.z;
+    const limbs = f.mesh.userData.limbs;
+    let bob = 0;
+    if (limbs){
+      const amp = Math.min(1, dt > 0 ? (moved/dt)/BASE_SPEED : 0);
+      f.walkPhase = (f.walkPhase || 0) + Math.min(moved, 1)*5.5;
+      const sw = Math.sin(f.walkPhase) * 0.75 * amp;
+      limbs.legL.rotation.x = sw;  limbs.legR.rotation.x = -sw;
+      limbs.armL.rotation.x = -sw*0.8; limbs.armR.rotation.x = sw*0.5;
+      bob = Math.abs(Math.sin(f.walkPhase)) * 0.07 * amp + Math.sin(performance.now()*0.003 + (f.capePhase||0)) * 0.012;
+    }
+    f.mesh.position.set(f.pos.x, bob, f.pos.z);
     f.mesh.rotation.y = f.rotY;
     if (f.cape) f.cape.rotation.x = 0.1 + Math.sin(performance.now()*0.004 + (f.capePhase||0)) * 0.05;
   }
@@ -2006,6 +2855,8 @@ const Match = (()=>{
       f.rotY = f.wanderAngle;
       return;
     }
+
+    botUseEquipment(f);
 
     // ---- Maxitrone : aucune attaque pendant la première minute ----
     if (currentGameMode === 'maxitrone'){
@@ -2095,6 +2946,20 @@ const Match = (()=>{
       if (d < best){ best = d; target = other; }
     }
     const speed = BASE_SPEED * speedMultiplier;
+    // les robots s'en prennent aux mortiers ennemis proches si aucun adversaire n'est au contact
+    const hostileMortar = nearestHostileMortar(f, 6.5);
+    if (hostileMortar && (!target || best > 3*3)){
+      const mdx = hostileMortar.x - f.pos.x, mdz = hostileMortar.z - f.pos.z;
+      const md = Math.hypot(mdx, mdz) || 1;
+      if (md > 1.9){
+        tryMove(f, mdx/md*speed*dt, mdz/md*speed*dt);
+      } else if (f.attackCooldown <= 0){
+        performAttack(f);
+        f.attackCooldown = ATTACK_COOLDOWN + Math.random()*0.4;
+      }
+      f.rotY = Math.atan2(mdx, mdz);
+      return;
+    }
     if (target && best < 14*14){
       const dx = target.pos.x - f.pos.x, dz = target.pos.z - f.pos.z;
       const d = Math.hypot(dx,dz) || 1;
@@ -2122,6 +2987,7 @@ const Match = (()=>{
       attacker.sword.rotation.z = -1.6;
       setTimeout(()=>{ if (attacker.sword) attacker.sword.rotation.z = -0.4; }, 150);
     }
+    hitMortars(attacker);
 
     if (currentGameMode === 'maxitrone' && maxitroneIsCombatPhase()) {
       let target = null, best = ATTACK_RANGE + 0.001;
@@ -2392,6 +3258,13 @@ const Match = (()=>{
     for (const f of fighters) updateFighter(f, dt);
     updateEffects();
     updateEquipmentCooldowns();
+    const nowT = performance.now();
+    updateCows(dt, nowT);
+    updateMortars(dt, nowT);
+    updateRocks(dt, nowT);
+    updateBolts(dt, nowT);
+    updateAmbient(dt, nowT);
+    if (fxBlind) fxBlind.classList.toggle('show', nowT < playerBlindUntil);
     if (fogVisual){ const p=getPlayer(); if(p){ fogVisual.position.set(p.pos.x,1.5,p.pos.z); fogVisual.rotation.y += dt*0.15; } }
     if (currentGameMode === 'couronne' && crown) updateCrownState(dt);
     if (currentGameMode === 'maxitrone'){
@@ -2463,6 +3336,12 @@ const Match = (()=>{
     equipmentCooldownUntil.clear();
     clearEquipmentVisuals();
     document.querySelectorAll('#equipment-actions button').forEach(b=>{b.classList.remove('used');b.removeAttribute('data-cooldown');});
+    // seuls les 3 équipements choisis dans le lobby apparaissent en partie
+    document.querySelectorAll('#equipment-actions .ability-btn').forEach(b=>{
+      b.style.display = APP.equipment.includes(b.id.replace('ability-', '')) ? '' : 'none';
+    });
+    ensureEquipmentFx();
+    hideEquipmentFx();
     AudioEngine.unlock();
 
     // réinitialise l'état du mode adrénaline pour cette nouvelle partie
@@ -2498,6 +3377,7 @@ const Match = (()=>{
 
   function endMatch(opts = {}){
     running = false;
+    hideEquipmentFx();
     clearInterval(matchTimerInterval);
     clearTimeout(adrenalineTimeout);
     clearTimeout(adrenalineEndTimeout);

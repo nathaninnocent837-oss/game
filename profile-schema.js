@@ -37,6 +37,9 @@ async function ensureProfileSchema() {
        ice_used INTEGER NOT NULL DEFAULT 0,
        fog_used INTEGER NOT NULL DEFAULT 0,
        heal_used INTEGER NOT NULL DEFAULT 0,
+       cow_used INTEGER NOT NULL DEFAULT 0,
+       bolt_used INTEGER NOT NULL DEFAULT 0,
+       mortar_used INTEGER NOT NULL DEFAULT 0,
        league_idx INTEGER NOT NULL DEFAULT 0,
        max_league_idx INTEGER NOT NULL DEFAULT 0,
        outfit_color TEXT,
@@ -44,6 +47,11 @@ async function ensureProfileSchema() {
        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
      )`
   );
+
+  // bases créées avant l'arrivée des nouveaux équipements
+  await pool.query(`ALTER TABLE player_profile ADD COLUMN IF NOT EXISTS cow_used INTEGER NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE player_profile ADD COLUMN IF NOT EXISTS bolt_used INTEGER NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE player_profile ADD COLUMN IF NOT EXISTS mortar_used INTEGER NOT NULL DEFAULT 0`);
 
   await pool.query(
     `CREATE TABLE IF NOT EXISTS bans (

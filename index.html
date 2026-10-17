@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="style.css?v=2">
 <link rel="stylesheet" href="league-updates.css?v=1">
 <link rel="stylesheet" href="profile.css?v=1">
+<link rel="stylesheet" href="equipment.css?v=1">
 </head>
 <body>
 
@@ -105,7 +106,8 @@
       <h2>Équipement</h2>
       <button class="panel-close" data-close="panel-equipment">&times;</button>
     </div>
-    <p class="panel-note equipment-intro">Choisis les équipements disponibles pour cette partie.</p>
+    <p class="panel-note equipment-intro">Choisis 3 équipements parmi les 6 pour tes parties.</p>
+    <p class="equipment-count" id="equipment-count"></p>
     <div class="equipment-list">
       <button class="equipment-card selected" data-equipment="ice">
         <span class="equipment-icon ice-icon">❄</span>
@@ -120,6 +122,21 @@
       <button class="equipment-card selected" data-equipment="heal">
         <span class="equipment-icon heal-icon">+</span>
         <span><strong>Soin instantané</strong><small>Restaure tous les points de vie immédiatement.</small></span>
+        <span class="equipment-check">✓</span>
+      </button>
+      <button class="equipment-card" data-equipment="cow">
+        <span class="equipment-icon cow-icon">🐄</span>
+        <span><strong>Vache enragée</strong><small>Une vache broute 9 secondes, puis fonce sur un membre au hasard : 10 000 dégâts. Elle disparaît après son élimination.</small></span>
+        <span class="equipment-check">✓</span>
+      </button>
+      <button class="equipment-card" data-equipment="bolt">
+        <span class="equipment-icon bolt-icon">⚡</span>
+        <span><strong>Éclair</strong><small>La foudre s'abat sur le combattant le plus proche.</small></span>
+        <span class="equipment-check">✓</span>
+      </button>
+      <button class="equipment-card" data-equipment="mortar">
+        <span class="equipment-icon mortar-icon">🦁</span>
+        <span><strong>Mortier de lion</strong><small>1 321 PV. Tire toutes les 5 s sur un membre au hasard : le rocher met 5 s à atterrir (456 dégâts).</small></span>
         <span class="equipment-check">✓</span>
       </button>
     </div>
@@ -277,6 +294,9 @@
     <button class="ability-btn ability-ice" id="ability-ice" title="Glace" aria-label="Utiliser la glace"><span>❄</span><small>Glace</small></button>
     <button class="ability-btn ability-fog" id="ability-fog" title="Brouillard" aria-label="Utiliser le brouillard"><span>◌</span><small>Brouillard</small></button>
     <button class="ability-btn ability-heal" id="ability-heal" title="Soin" aria-label="Utiliser le soin"><span>+</span><small>Soin</small></button>
+    <button class="ability-btn ability-cow" id="ability-cow" title="Vache enragée" aria-label="Utiliser la vache enragée"><span>🐄</span><small>Vache</small></button>
+    <button class="ability-btn ability-bolt" id="ability-bolt" title="Éclair" aria-label="Utiliser l'éclair"><span>⚡</span><small>Éclair</small></button>
+    <button class="ability-btn ability-mortar" id="ability-mortar" title="Mortier de lion" aria-label="Poser le mortier de lion"><span>🦁</span><small>Mortier</small></button>
   </div>
 
   <div class="respawn-overlay" id="respawn-overlay">

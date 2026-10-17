@@ -1,0 +1,51 @@
+/* ============================================================
+   TRUGO — nouveaux équipements : Vache enragée, Éclair, Mortier de lion
+   + sélection 3 sur 6 + effets d'écran
+   ============================================================ */
+
+/* ---------- Panneau de choix des équipements ---------- */
+.equipment-count{
+  display:inline-block; margin:0 0 .7rem; padding:.3rem .8rem; border-radius:99px;
+  font-family:var(--font-display); font-weight:700; font-size:.85rem; letter-spacing:.04em;
+  color:var(--teal); background:rgba(69,214,196,.1); border:1px solid rgba(69,214,196,.45);
+}
+.equipment-count.full{ color:var(--gold-soft); background:rgba(255,182,72,.1); border-color:rgba(255,182,72,.55); }
+.equipment-count.shake{ animation:eq-shake .4s ease; color:var(--coral); border-color:var(--coral); background:rgba(255,92,104,.1); }
+@keyframes eq-shake{ 0%,100%{ transform:translateX(0); } 20%{ transform:translateX(-6px); } 40%{ transform:translateX(6px); } 60%{ transform:translateX(-4px); } 80%{ transform:translateX(4px); } }
+
+.equipment-card.locked{ opacity:.5; }
+.equipment-card{ transition:transform .12s ease, opacity .2s ease, box-shadow .2s ease; }
+.equipment-card:active{ transform:scale(.985); }
+
+.equipment-icon.cow-icon{ background:linear-gradient(135deg,#f4efe6,#b9b2a3); color:#1b1b1f; }
+.equipment-icon.bolt-icon{ background:linear-gradient(135deg,#9ad8ff,#4b7bff); color:#fff; text-shadow:0 0 8px #fff; }
+.equipment-icon.mortar-icon{ background:linear-gradient(135deg,#ffd76a,#b9791f); color:#2a1b00; }
+
+/* ---------- Boutons d'équipement en partie ---------- */
+.ability-btn.ability-cow{ border-color:rgba(244,239,230,.55); }
+.ability-btn.ability-bolt{ border-color:rgba(154,216,255,.7); box-shadow:0 0 10px rgba(110,170,255,.35); }
+.ability-btn.ability-mortar{ border-color:rgba(255,182,72,.65); }
+
+/* ---------- Calques d'écran (au-dessus du décor 3D, sous l'interface) ---------- */
+.eq-flash{
+  position:absolute; inset:0; z-index:5; pointer-events:none; opacity:0; background:#eaf6ff;
+}
+.eq-flash.show{ animation:eq-flash .5s ease-out; }
+@keyframes eq-flash{ 0%{ opacity:var(--eq-flash,1); } 25%{ opacity:calc(var(--eq-flash,1)*.25); } 40%{ opacity:calc(var(--eq-flash,1)*.7); } 100%{ opacity:0; } }
+
+.eq-blind{
+  position:absolute; inset:0; z-index:5; pointer-events:none; opacity:0; transition:opacity .45s ease;
+  background:radial-gradient(circle at 50% 55%, rgba(205,222,234,.38) 0%, rgba(200,217,230,.88) 55%, rgba(196,213,226,.97) 100%);
+}
+.eq-blind.show{ opacity:1; }
+
+.eq-warning{
+  position:absolute; top:calc(env(safe-area-inset-top,0px) + 70px); left:50%; transform:translateX(-50%);
+  z-index:9; display:none; padding:.45rem 1.2rem; border-radius:99px; pointer-events:none;
+  font-family:var(--font-display); font-weight:700; letter-spacing:.1em; font-size:1rem; color:#fff;
+  background:linear-gradient(90deg,#b3121f,#ff3b3b); border:1px solid #ffb3ba;
+  box-shadow:0 0 22px rgba(255,59,59,.75);
+  animation:eq-warning-pulse .55s ease-in-out infinite alternate;
+}
+.eq-warning.show{ display:block; }
+@keyframes eq-warning-pulse{ from{ box-shadow:0 0 10px rgba(255,59,59,.5); } to{ box-shadow:0 0 30px rgba(255,59,59,1); } }

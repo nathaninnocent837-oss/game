@@ -9,7 +9,8 @@
   var LEAGUES = ["Aucune", "Bronze", "Argent", "Or", "Platine", "Diamant", "Master", "Champion", "Colossal", "Légende", "Ultime", "Suprême"];
   var LEAGUE_COLORS = ["#93a3b5", "#cd7f32", "#c0c7d1", "#ffc83d", "#7be3ff", "#5ab0ff", "#c06bff", "#ff6bd6", "#ff8a3d", "#ff5c68", "#a78bfa", "#ffffff"];
   var ROLE_LABEL = { admin: "Administrateur", moderator: "Modérateur", member: "Membre" };
-  var EQUIP_LABEL = { ice: "❄ Glace", fog: "◌ Brouillard", heal: "+ Soin" };
+  var EQUIP_LABEL = { ice: "❄ Glace", fog: "◌ Brouillard", heal: "+ Soin", cow: "🐄 Vache enragée", bolt: "⚡ Éclair", mortar: "🦁 Mortier de lion" };
+  var EQUIP_KEYS = ["ice", "fog", "heal", "cow", "bolt", "mortar"];
 
   var me = null;          // { username, role }
   var banState = null;    // sanction active du joueur connecté
@@ -17,8 +18,8 @@
   var inMatch = false;
   var rankedFlag = false;
   var reported = false;
-  var counts = { ice: 0, fog: 0, heal: 0 };
-  var prevUsed = { ice: false, fog: false, heal: false };
+  var counts = { ice: 0, fog: 0, heal: 0, cow: 0, bolt: 0, mortar: 0 };
+  var prevUsed = { ice: false, fog: false, heal: false, cow: false, bolt: false, mortar: false };
   var liveTimer = null;
   var spectateTimer = null;
   var verifiedUntil = 0;
@@ -450,8 +451,8 @@
   function onMatchStart() {
     inMatch = true;
     reported = false;
-    counts = { ice: 0, fog: 0, heal: 0 };
-    ["ice", "fog", "heal"].forEach(function (k) {
+    counts = { ice: 0, fog: 0, heal: 0, cow: 0, bolt: 0, mortar: 0 };
+    EQUIP_KEYS.forEach(function (k) {
       var b = document.getElementById("ability-" + k);
       prevUsed[k] = !!(b && b.classList.contains("used"));
     });
@@ -763,7 +764,7 @@
   var endScreen = $("#screen-endmatch");
   if (endScreen) watchClass(endScreen, function (active) { if (active) setTimeout(onMatchEnd, 400); });
 
-  ["ice", "fog", "heal"].forEach(function (key) {
+  EQUIP_KEYS.forEach(function (key) {
     var b = document.getElementById("ability-" + key);
     if (!b) return;
     new MutationObserver(function () {
