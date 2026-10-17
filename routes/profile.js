@@ -231,6 +231,7 @@ router.get(
          ps.points, ps.league, ps.max_league,
          pp.games_played, pp.games_won, pp.top1,
          pp.ice_used, pp.fog_used, pp.heal_used,
+         pp.cow_used, pp.bolt_used, pp.mortar_used,
          pp.league_idx, pp.max_league_idx,
          pp.outfit_color, pp.sword_color
        FROM users u
@@ -248,12 +249,16 @@ router.get(
     const ice = Number(row.ice_used) || 0;
     const fog = Number(row.fog_used) || 0;
     const heal = Number(row.heal_used) || 0;
-    const totalEquipment = ice + fog + heal;
+    const cow = Number(row.cow_used) || 0;
+    const bolt = Number(row.bolt_used) || 0;
+    const mortar = Number(row.mortar_used) || 0;
+    const usage = { ice, fog, heal, cow, bolt, mortar };
+    const totalEquipment = ice + fog + heal + cow + bolt + mortar;
 
     let favorite = null;
     if (totalEquipment > 0) {
-      const best = Math.max(ice, fog, heal);
-      favorite = ice === best ? "ice" : fog === best ? "fog" : "heal";
+      const best = Math.max(ice, fog, heal, cow, bolt, mortar);
+      favorite = Object.keys(usage).find(key => usage[key] === best);
     }
 
     const live = liveMatches.get(String(row.id));
@@ -274,7 +279,7 @@ router.get(
         gamesPlayed: Number(row.games_played) || 0,
         gamesWon: Number(row.games_won) || 0,
         top1: Number(row.top1) || 0,
-        equipment: { ice, fog, heal, total: totalEquipment, favorite },
+        equipment: { ice, fog, heal, cow, bolt, mortar, total: totalEquipment, favorite },
         outfit: row.outfit_color || null,
         sword: row.sword_color || null,
         inMatch
@@ -368,22 +373,28 @@ router.post(
 
     const won = rank === 1 ? 1 : 0;
     const top1 = rank === 1 && ranked ? 1 : 0;
-    const ice = clampInt(eq.ice, 0, 1);
-    const fog = clampInt(eq.fog, 0, 1);
-    const heal = clampInt(eq.heal, 0, 1);
+    const ice = clampInt(eq.ice, 0, 20);
+    const fog = clampInt(eq.fog, 0, 20);
+    const heal = clampInt(eq.heal, 0, 20);
+    const cow = clampInt(eq.cow, 0, 20);
+    const bolt = clampInt(eq.bolt, 0, 20);
+    const mortar = clampInt(eq.mortar, 0, 20);
 
     await pool.query(
       `INSERT INTO player_profile
-         (user_id, games_won, top1, ice_used, fog_used, heal_used)
-       VALUES ($1, $2, $3, $4, $5, $6)
+         (user_id, games_won, top1, ice_used, fog_used, heal_used, cow_used, bolt_used, mortar_used)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (user_id) DO UPDATE SET
          games_won = player_profile.games_won + EXCLUDED.games_won,
          top1 = player_profile.top1 + EXCLUDED.top1,
          ice_used = player_profile.ice_used + EXCLUDED.ice_used,
          fog_used = player_profile.fog_used + EXCLUDED.fog_used,
          heal_used = player_profile.heal_used + EXCLUDED.heal_used,
+         cow_used = player_profile.cow_used + EXCLUDED.cow_used,
+         bolt_used = player_profile.bolt_used + EXCLUDED.bolt_used,
+         mortar_used = player_profile.mortar_used + EXCLUDED.mortar_used,
          updated_at = NOW()`,
-      [req.me.id, won, top1, ice, fog, heal]
+      [req.me.id, won, top1, ice, fog, heal, cow, bolt, mortar]
     );
 
     liveMatches.delete(String(req.me.id));
