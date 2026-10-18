@@ -112,6 +112,9 @@ const EQUIPMENT_NAMES = {
   ice: 'Glace',
   fog: 'Brouillard',
   heal: 'Soin',
+  cow: 'Vache enragée',
+  bolt: 'Éclair',
+  mortar: 'Mortier de lion',
 };
 
 /* ---------------------------------------------------------
@@ -691,10 +694,28 @@ document.getElementById('btn-shop').addEventListener('click', ()=>{
   // Bouton volontairement inactif pour l'instant.
 });
 
-document.getElementById('btn-equipment').addEventListener('click', ()=>{
+// Sécurité : uniquement des équipements connus, 3 au maximum (anciennes sauvegardes comprises)
+APP.equipment = (Array.isArray(APP.equipment) ? APP.equipment : [])
+  .filter((t, i, a)=>['ice', 'fog', 'heal', 'cow', 'bolt', 'mortar'].includes(t) && a.indexOf(t) === i)
+  .slice(0, 3);
+if (!APP.equipment.length) APP.equipment = ['ice', 'fog', 'heal'];
+
+function refreshEquipmentCards(){
+  const full = APP.equipment.length >= 3;
   document.querySelectorAll('.equipment-card').forEach(card=>{
-    card.classList.toggle('selected', APP.equipment.includes(card.dataset.equipment));
+    const on = APP.equipment.includes(card.dataset.equipment);
+    card.classList.toggle('selected', on);
+    card.classList.toggle('locked', full && !on);
   });
+  const counter = document.getElementById('equipment-count');
+  if (counter){
+    counter.textContent = `${APP.equipment.length} / 3 équipements choisis`;
+    counter.classList.toggle('full', full);
+  }
+}
+
+document.getElementById('btn-equipment').addEventListener('click', ()=>{
+  refreshEquipmentCards();
   openPanel('panel-equipment');
 });
 document.querySelectorAll('.equipment-card').forEach(card=>{
@@ -704,9 +725,19 @@ document.querySelectorAll('.equipment-card').forEach(card=>{
       APP.equipment = APP.equipment.filter(item=>item !== equipment);
     } else if (APP.equipment.length < 3){
       APP.equipment.push(equipment);
+    } else {
+      // déjà 3 équipements : le compteur tremble pour dire « retire-en un d'abord »
+      const counter = document.getElementById('equipment-count');
+      if (counter){
+        counter.classList.remove('shake');
+        void counter.offsetWidth;
+        counter.classList.add('shake');
+        setTimeout(()=>counter.classList.remove('shake'), 450);
+      }
+      return;
     }
-    card.classList.toggle('selected', APP.equipment.includes(equipment));
     Store.save('trugo_equipment', APP.equipment);
+    refreshEquipmentCards();
   });
 });
 
@@ -1229,6 +1260,19 @@ function stepTowardAngle(current, target, maxStep){
   return current + Math.sign(diff) * maxStep;
 }
 const EQUIPMENT_COOLDOWN = 20; // chaque équipement revient après 20 secondes
+
+// ---- nouveaux équipements ----
+const COW_GRAZE_SECONDS = 9;       // la vache broute 9 s avant de charger
+const COW_DAMAGE = 10000;
+const COW_SPEED = 9;
+const COW_CHARGE_TIMEOUT = 20;     // sécurité : la vache disparaît si elle n'atteint personne
+const BOLT_DAMAGE = 350;           // dégâts de l'éclair (non précisés : à ajuster ici)
+const MORTAR_HP = 1321;
+const MORTAR_DAMAGE = 456;
+const MORTAR_FIRE_INTERVAL = 5;    // secondes entre deux tirs
+const MORTAR_FLIGHT_TIME = 5;      // secondes avant que le rocher atterrisse
+const BOT_EQUIPMENT_COOLDOWN = 25; // recharge des équipements des robots
+const ALL_EQUIPMENT = ['ice', 'fog', 'heal', 'cow', 'bolt', 'mortar'];
 const ADRENALINE_DURATION = 30; // secondes
 const ADRENALINE_MIN_DELAY = 30; // secondes avant que le mode puisse s'activer
 const ADRENALINE_END_MARGIN = 15; // secondes de marge avant la fin de la partie
@@ -1257,6 +1301,12 @@ const Match = (()=>{
   let fogVisual = null;
   let iceVisuals = [];
   let effects = [];
+
+  // ---- nouveaux équipements (vache, éclair, mortier) + décor animé ----
+  let cows = [], mortars = [], rocks = [], bolts = [];
+  let playerBlindUntil = 0;
+  let fxFlash = null, fxBlind = null, fxWarning = null, warningTimer = null;
+  let ambientFlames = [], runeRings = [];
 
   // ---- mode adrénaline ----
   let hemiLight, sunLight;
@@ -1934,6 +1984,12 @@ const Match = (()=>{
     }
     iceVisuals.forEach(v=>{ try{ scene.remove(v); v.geometry.dispose(); v.material.dispose(); }catch(_){ } });
     iceVisuals = [];
+    cows.forEach(c=>disposeObject(c.mesh)); cows = [];
+    mortars.forEach(m=>disposeObject(m.mesh)); mortars = [];
+    rocks.forEach(r=>{ disposeObject(r.rock); disposeObject(r.marker); }); rocks = [];
+    bolts.forEach(b=>disposeObject(b.group)); bolts = [];
+    playerBlindUntil = 0;
+    hideEquipmentFx();
   }
 
   function startEquipmentCooldown(type){
@@ -1989,6 +2045,569 @@ const Match = (()=>{
     },3000);
   }
 
+  /* ====================================================================
+     NOUVEAUX ÉQUIPEMENTS : vache enragée, éclair, mortier de lion
+     (utilisables par le joueur ET par les robots)
+  ==================================================================== */
+  function disposeObject(obj){
+    if (!obj) return;
+    try{ scene.remove(obj); }catch(_){ }
+    obj.traverse(o=>{
+      if (o.geometry) o.geometry.dispose();
+      if (o.material){
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        mats.forEach(m=>{ if (m.map) m.map.dispose(); m.dispose(); });
+      }
+    });
+  }
+
+  function equipTargets(owner){
+    return fighters.filter(f=>f !== owner && f.alive && !f.permanentlyEliminated);
+  }
+  function equipAttacksBlocked(){
+    return currentGameMode === 'maxitrone' && !maxitroneCombatStarted;
+  }
+  function nearestTarget(owner){
+    let best = null, bd = Infinity;
+    for (const f of equipTargets(owner)){
+      const d = dist2(owner.pos.x, owner.pos.z, f.pos.x, f.pos.z);
+      if (d < bd){ bd = d; best = f; }
+    }
+    return best ? { fighter: best, dist: Math.sqrt(bd) } : null;
+  }
+
+  // ---- calques d'écran : éclair blanc, brouillard, alerte ----
+  function ensureEquipmentFx(){
+    const screen = document.getElementById('screen-match');
+    if (!screen) return;
+    if (!fxFlash){ fxFlash = document.createElement('div'); fxFlash.className = 'eq-flash'; screen.appendChild(fxFlash); }
+    if (!fxBlind){ fxBlind = document.createElement('div'); fxBlind.className = 'eq-blind'; screen.appendChild(fxBlind); }
+    if (!fxWarning){ fxWarning = document.createElement('div'); fxWarning.className = 'eq-warning'; screen.appendChild(fxWarning); }
+  }
+  function flashScreen(intensity){
+    ensureEquipmentFx();
+    if (!fxFlash) return;
+    fxFlash.style.setProperty('--eq-flash', String(intensity));
+    fxFlash.classList.remove('show');
+    void fxFlash.offsetWidth;
+    fxFlash.classList.add('show');
+  }
+  function showWarning(text, ms){
+    ensureEquipmentFx();
+    if (!fxWarning) return;
+    fxWarning.textContent = text;
+    fxWarning.classList.add('show');
+    clearTimeout(warningTimer);
+    warningTimer = setTimeout(()=>{ if (fxWarning) fxWarning.classList.remove('show'); }, ms);
+  }
+  function hideEquipmentFx(){
+    clearTimeout(warningTimer);
+    if (fxFlash) fxFlash.classList.remove('show');
+    if (fxBlind) fxBlind.classList.remove('show');
+    if (fxWarning) fxWarning.classList.remove('show');
+  }
+
+  // ---- petite étiquette 3D (compte à rebours de la vache) ----
+  function makeLabelSprite(){
+    const canvas = document.createElement('canvas');
+    canvas.width = 160; canvas.height = 56;
+    const ctx = canvas.getContext('2d');
+    const texture = new THREE.CanvasTexture(canvas);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map:texture, transparent:true, depthTest:false }));
+    sprite.scale.set(1.5, 0.52, 1);
+    sprite.userData = { canvas, ctx, texture, key:'' };
+    return sprite;
+  }
+  function setLabel(sprite, text, color){
+    const u = sprite.userData;
+    const key = text + '|' + color;
+    if (u.key === key) return;
+    u.key = key;
+    u.ctx.clearRect(0, 0, u.canvas.width, u.canvas.height);
+    u.ctx.fillStyle = 'rgba(8,12,18,.8)';
+    u.ctx.fillRect(4, 4, u.canvas.width-8, u.canvas.height-8);
+    u.ctx.strokeStyle = color; u.ctx.lineWidth = 3;
+    u.ctx.strokeRect(4, 4, u.canvas.width-8, u.canvas.height-8);
+    u.ctx.font = '700 30px Rajdhani, sans-serif';
+    u.ctx.textAlign = 'center'; u.ctx.textBaseline = 'middle';
+    u.ctx.fillStyle = color;
+    u.ctx.fillText(text, u.canvas.width/2, u.canvas.height/2 + 2);
+    u.texture.needsUpdate = true;
+  }
+
+  function drawBar(sprite, ratio, color){
+    const u = sprite.userData;
+    u.context.clearRect(0, 0, u.canvas.width, u.canvas.height);
+    u.context.fillStyle = 'rgba(5,9,14,.85)';
+    u.context.fillRect(0, 0, u.canvas.width, u.canvas.height);
+    u.context.fillStyle = color;
+    u.context.fillRect(3, 3, (u.canvas.width-6)*Math.max(0, Math.min(1, ratio)), u.canvas.height-6);
+    u.texture.needsUpdate = true;
+  }
+
+  /* ---------------------------- VACHE ENRAGÉE ---------------------------- */
+  function buildCowMesh(){
+    const g = new THREE.Group();
+    const std = (c, r)=>new THREE.MeshStandardMaterial({ color:c, roughness:(r === undefined ? 0.85 : r), metalness:0 });
+    const white = std('#f5f2ea'), black = std('#1c1a19'), pink = std('#eaa4ab', 0.7), hornMat = std('#efe2bd', 0.5);
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.8, 1.6), white);
+    body.position.y = 1.05; g.add(body);
+    [[-0.46, 1.15, 0.25, 0.05, 0.5, 0.55], [0.46, 1.0, -0.3, 0.05, 0.5, 0.6], [0, 1.46, -0.1, 0.55, 0.05, 0.6], [-0.46, 0.85, -0.45, 0.05, 0.35, 0.4]].forEach(s=>{
+      const spot = new THREE.Mesh(new THREE.BoxGeometry(s[3], s[4], s[5]), black);
+      spot.position.set(s[0], s[1], s[2]); g.add(spot);
+    });
+    const udder = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), pink);
+    udder.position.set(0, 0.6, -0.35); udder.scale.set(1, 0.7, 1); g.add(udder);
+
+    const legs = [];
+    [[-0.3, 0.55], [0.3, 0.55], [-0.3, -0.55], [0.3, -0.55]].forEach(p=>{
+      const pivot = new THREE.Group(); pivot.position.set(p[0], 0.68, p[1]);
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.68, 0.2), white); leg.position.y = -0.34; pivot.add(leg);
+      const hoof = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.24), black); hoof.position.y = -0.68; pivot.add(hoof);
+      g.add(pivot); legs.push(pivot);
+    });
+
+    const head = new THREE.Group(); head.position.set(0, 1.3, 0.85);
+    const skull = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.5, 0.5), white); skull.position.set(0, 0, 0.12); head.add(skull);
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.24, 0.22), pink); snout.position.set(0, -0.12, 0.4); head.add(snout);
+    [-1, 1].forEach(s=>{
+      const nostril = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.04), black); nostril.position.set(s*0.1, -0.1, 0.52); head.add(nostril);
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.3, 6), hornMat); horn.position.set(s*0.22, 0.34, 0.1); horn.rotation.z = -s*0.5; head.add(horn);
+      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.12), white); ear.position.set(s*0.36, 0.18, 0.05); ear.rotation.z = s*0.3; head.add(ear);
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.045, 0.06), black); brow.position.set(s*0.18, 0.2, 0.38); brow.rotation.z = -s*0.45; head.add(brow);
+    });
+    const eyeMat = new THREE.MeshStandardMaterial({ color:'#ff2a2a', emissive:'#ff0000', emissiveIntensity:1.2, roughness:0.4 });
+    [-1, 1].forEach(s=>{
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMat);
+      eye.position.set(s*0.2, 0.08, 0.37); head.add(eye);
+    });
+    g.add(head);
+
+    const tail = new THREE.Group(); tail.position.set(0, 1.35, -0.8);
+    const tailMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.6, 6), black); tailMesh.position.y = -0.3; tail.add(tailMesh);
+    const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), black); tuft.position.y = -0.62; tail.add(tuft);
+    g.add(tail);
+
+    g.scale.setScalar(1.15);
+    return { group:g, head, legs, tail, eyeMat };
+  }
+
+  function spawnCow(owner){
+    const parts = buildCowMesh();
+    let x = owner.pos.x + Math.sin(owner.rotY)*2.4, z = owner.pos.z + Math.cos(owner.rotY)*2.4;
+    const r = Math.hypot(x, z);
+    if (r > ARENA_RADIUS-1){ x *= (ARENA_RADIUS-1)/r; z *= (ARENA_RADIUS-1)/r; }
+    const rot = Math.random()*Math.PI*2;
+    parts.group.position.set(x, 0, z);
+    parts.group.rotation.y = rot;
+    const label = makeLabelSprite();
+    label.position.y = 2.9;
+    parts.group.add(label);
+    scene.add(parts.group);
+    addEffect({ x, z }, '#f5f2ea', 800);
+    addEffect({ x, z }, '#ffb648', 1000);
+    cows.push({
+      owner, mesh:parts.group, head:parts.head, legs:parts.legs, tail:parts.tail, eyeMat:parts.eyeMat, label,
+      x, z, rot, born:performance.now(), state:'graze', target:null, chargeStart:0, dustAt:0, hitCooldown:0, dead:false
+    });
+  }
+
+  function removeCow(c){
+    c.dead = true;
+    addEffect({ x:c.x, z:c.z }, '#f5f2ea', 700);
+    disposeObject(c.mesh);
+  }
+  function pickCowTarget(c){
+    const list = equipTargets(c.owner);
+    return list.length ? list[Math.floor(Math.random()*list.length)] : null;
+  }
+  function announceCowTarget(c){
+    if (!c.target) return;
+    if (c.target.isPlayer) showWarning('🐄 LA VACHE FONCE SUR TOI !', 3500);
+    else if (c.owner.isPlayer) setMatchStatus(`🐄 La vache fonce sur ${c.target.name} !`, 2200);
+    else setMatchStatus(`🐄 La vache de ${c.owner.name} charge ${c.target.name} !`, 2200);
+  }
+
+  function updateCows(dt, now){
+    for (const c of cows){
+      if (c.dead) continue;
+      if (c.state === 'graze'){
+        const left = COW_GRAZE_SECONDS - (now - c.born)/1000;
+        c.head.rotation.x = 0.75 + Math.sin(now*0.007)*0.12;   // tête baissée : elle broute
+        c.head.position.y = 1.05 + Math.sin(now*0.007)*0.02;
+        c.tail.rotation.z = Math.sin(now*0.008)*0.5;
+        if (left < 2){                                         // elle s'énerve : patte qui gratte, yeux rouges
+          c.legs[0].rotation.x = Math.sin(now*0.03)*0.6;
+          c.eyeMat.emissiveIntensity = 2.2;
+        }
+        setLabel(c.label, '🐄 ' + Math.ceil(Math.max(left, 0)), left < 3 ? '#ff6b6b' : '#f5f2ea');
+        if (left <= 0){
+          c.target = pickCowTarget(c);
+          if (!c.target){ removeCow(c); continue; }
+          c.state = 'charge';
+          c.chargeStart = now;
+          c.label.visible = false;
+          c.head.rotation.x = 0.25; c.head.position.y = 1.3;
+          announceCowTarget(c);
+        }
+      } else {
+        if (!c.target || !c.target.alive || c.target.permanentlyEliminated){
+          c.target = pickCowTarget(c);
+          if (!c.target){ removeCow(c); continue; }
+          announceCowTarget(c);
+        }
+        if ((now - c.chargeStart)/1000 > COW_CHARGE_TIMEOUT){ removeCow(c); continue; }
+        const dx = c.target.pos.x - c.x, dz = c.target.pos.z - c.z;
+        const d = Math.hypot(dx, dz) || 1;
+        const step = Math.min(d, COW_SPEED*dt);
+        c.x += dx/d*step; c.z += dz/d*step;
+        c.rot = stepTowardAngle(c.rot, Math.atan2(dx, dz), Math.PI*5*dt);
+        const ph = now*0.02;
+        c.legs[0].rotation.x = Math.sin(ph)*0.9;  c.legs[3].rotation.x = Math.sin(ph)*0.9;
+        c.legs[1].rotation.x = -Math.sin(ph)*0.9; c.legs[2].rotation.x = -Math.sin(ph)*0.9;
+        c.head.rotation.x = 0.3 + Math.sin(ph*0.5)*0.08;
+        c.mesh.position.y = Math.abs(Math.sin(ph))*0.12;
+        if (now > c.dustAt){ addEffect({ x:c.x, z:c.z }, '#d9b98a', 450); c.dustAt = now + 140; }
+        if (d < 1.0 && now >= c.hitCooldown){
+          const victim = c.target;
+          c.hitCooldown = now + 500;
+          addEffect(victim.pos, '#ff3b3b', 700);
+          addEffect(victim.pos, '#ffffff', 500);
+          if (victim.isPlayer) flashScreen(0.45);
+          applyDamage(c.owner, victim, COW_DAMAGE);
+          if (!victim.alive){ removeCow(c); continue; }   // elle disparaît après son élimination
+        }
+      }
+      c.mesh.position.x = c.x; c.mesh.position.z = c.z; c.mesh.rotation.y = c.rot;
+    }
+    cows = cows.filter(c=>!c.dead);
+  }
+
+  /* -------------------------------- ÉCLAIR -------------------------------- */
+  function boltSegment(a, b, radius, material){
+    const dir = new THREE.Vector3().subVectors(b, a);
+    const len = dir.length();
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, len, 5), material);
+    m.position.copy(a).add(b).multiplyScalar(0.5);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+    return m;
+  }
+
+  // frappe le combattant le plus proche ; renvoie la victime (ou null)
+  function strikeBolt(owner){
+    const near = nearestTarget(owner);
+    if (!near) return null;
+    const target = near.fighter;
+    const tx = target.pos.x, tz = target.pos.z;
+    const now = performance.now();
+
+    const group = new THREE.Group();
+    const coreMat = new THREE.MeshBasicMaterial({ color:'#ffffff' });
+    const glowMat = new THREE.MeshBasicMaterial({ color:'#7fc4ff', transparent:true, opacity:0.55, depthWrite:false });
+    const pts = [];
+    const segs = 9;
+    for (let i=0;i<=segs;i++){
+      const jitter = i === segs ? 0 : (Math.random()-0.5)*1.8;
+      pts.push(new THREE.Vector3(tx + jitter, 16*(1 - i/segs), tz + (i === segs ? 0 : (Math.random()-0.5)*1.8)));
+    }
+    for (let i=0;i<segs;i++){
+      group.add(boltSegment(pts[i], pts[i+1], 0.06, coreMat));
+      group.add(boltSegment(pts[i], pts[i+1], 0.2, glowMat));
+    }
+    for (let b=0;b<2;b++){
+      const k = 2 + Math.floor(Math.random()*4);
+      const p0 = pts[k];
+      const p1 = new THREE.Vector3(p0.x + (Math.random()-0.5)*3.5, p0.y - 2.2, p0.z + (Math.random()-0.5)*3.5);
+      const p2 = new THREE.Vector3(p1.x + (Math.random()-0.5)*2.5, p1.y - 2.2, p1.z + (Math.random()-0.5)*2.5);
+      group.add(boltSegment(p0, p1, 0.04, coreMat));
+      group.add(boltSegment(p1, p2, 0.035, coreMat));
+    }
+    const flashMat = new THREE.MeshBasicMaterial({ color:'#bfe3ff', transparent:true, opacity:0.85, depthWrite:false, blending:THREE.AdditiveBlending });
+    const flash = new THREE.Mesh(new THREE.SphereGeometry(0.9, 14, 10), flashMat);
+    flash.position.set(tx, 0.5, tz);
+    group.add(flash);
+    const scorchMat = new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity:0.55, depthWrite:false });
+    const scorch = new THREE.Mesh(new THREE.CircleGeometry(0.95, 20), scorchMat);
+    scorch.rotation.x = -Math.PI/2; scorch.position.set(tx, 0.03, tz);
+    group.add(scorch);
+    scene.add(group);
+    bolts.push({ group, bolt:null, flash, flashMat, scorchMat, born:now });
+
+    addEffect(target.pos, '#8fd3ff', 700);
+    addEffect(target.pos, '#ffffff', 500);
+    const player = getPlayer();
+    const nearPlayer = player && Math.hypot(player.pos.x - tx, player.pos.z - tz) < 8;
+    if (target.isPlayer) flashScreen(0.6); else if (nearPlayer) flashScreen(0.22);
+    if (!owner.isPlayer && target.isPlayer) setMatchStatus(`⚡ ${owner.name} t'a foudroyé !`, 2200);
+    applyDamage(owner, target, BOLT_DAMAGE);
+    return target;
+  }
+
+  function updateBolts(dt, now){
+    for (const b of bolts){
+      const t = (now - b.born)/1000;
+      b.group.children.forEach(ch=>{
+        if (ch === b.flash || ch.geometry.type === 'CircleGeometry') return;
+        ch.visible = t < 0.34 && (t < 0.1 || Math.floor(t*40)%2 === 0);   // scintillement
+      });
+      b.flash.scale.setScalar(1 + t*5);
+      b.flashMat.opacity = Math.max(0, 0.85 - t*2);
+      b.scorchMat.opacity = Math.max(0, 0.55 - t*0.22);
+      if (t > 2.5){ b.done = true; disposeObject(b.group); }
+    }
+    bolts = bolts.filter(b=>!b.done);
+  }
+
+  /* ---------------------------- MORTIER DE LION ---------------------------- */
+  function buildMortarMesh(){
+    const g = new THREE.Group();
+    const std = (c, r, m, extra)=>new THREE.MeshStandardMaterial(Object.assign({ color:c, roughness:r, metalness:m }, extra || {}));
+    const stone = std('#6d665a', 0.9, 0.05), iron = std('#2b2f36', 0.5, 0.7);
+    const gold = std('#e0a93a', 0.35, 0.85, { emissive:'#6b4300', emissiveIntensity:0.35 });
+
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.1, 0.3, 12), stone); base.position.y = 0.15; g.add(base);
+    const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.8, 0.12, 12), iron); plate.position.y = 0.36; g.add(plate);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.78, 0.05, 6, 20), gold); ring.rotation.x = Math.PI/2; ring.position.y = 0.43; g.add(ring);
+
+    const pivot = new THREE.Group(); pivot.position.set(0, 0.62, 0);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 1.35, 14), iron);
+    barrel.rotation.x = 0.95; barrel.position.set(0, 0.39, 0.55); pivot.add(barrel);
+    [-0.3, 0.3].forEach(y=>{
+      const band = new THREE.Mesh(new THREE.TorusGeometry(0.39 - y*0.1, 0.05, 6, 16), gold);
+      band.rotation.x = Math.PI/2; band.position.y = y; barrel.add(band);
+    });
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.06, 6, 16), gold);
+    rim.rotation.x = Math.PI/2; rim.position.y = 0.675; barrel.add(rim);
+
+    // tête de lion dorée sous la gueule du canon
+    const mane = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.1, 8, 18), std('#c9822b', 0.6, 0.4)); mane.position.set(0, 0.18, 0.95); pivot.add(mane);
+    const face = new THREE.Mesh(new THREE.SphereGeometry(0.27, 14, 10), std('#e8b64a', 0.5, 0.5)); face.scale.set(1, 1, 0.8); face.position.set(0, 0.18, 0.95); pivot.add(face);
+    const snout = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), std('#f3d58a', 0.5, 0.3)); snout.position.set(0, 0.1, 1.2); pivot.add(snout);
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), std('#2a1a10', 0.6, 0)); nose.position.set(0, 0.15, 1.31); pivot.add(nose);
+    [-1, 1].forEach(s=>{
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), std('#1a1008', 0.4, 0)); eye.position.set(s*0.1, 0.26, 1.14); pivot.add(eye);
+      const ear = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), std('#e8b64a', 0.5, 0.5)); ear.position.set(s*0.22, 0.42, 0.9); pivot.add(ear);
+    });
+
+    // flash de tir à la bouche du canon
+    const flash = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), new THREE.MeshBasicMaterial({ color:'#ffb347', transparent:true, opacity:0.9, depthWrite:false, blending:THREE.AdditiveBlending }));
+    flash.position.set(0, 0.78, 1.09); flash.visible = false; pivot.add(flash);
+    g.add(pivot);
+
+    const bar = makeHealthBar();
+    bar.scale.set(1.6, 0.24, 1);
+    bar.position.y = 2.35;
+    g.add(bar);
+    return { group:g, pivot, bar, flash };
+  }
+
+  function placeMortar(owner){
+    const parts = buildMortarMesh();
+    let x = owner.pos.x + Math.sin(owner.rotY)*1.7, z = owner.pos.z + Math.cos(owner.rotY)*1.7;
+    const r = Math.hypot(x, z);
+    if (r > ARENA_RADIUS-1.2){ x *= (ARENA_RADIUS-1.2)/r; z *= (ARENA_RADIUS-1.2)/r; }
+    if (obstacles.some(o=>dist2(x, z, o.x, o.z) < (o.radius+0.9)*(o.radius+0.9))){ x = owner.pos.x; z = owner.pos.z; }
+    parts.group.position.set(x, 0, z);
+    parts.pivot.rotation.y = owner.rotY;
+    scene.add(parts.group);
+    addEffect({ x, z }, '#ffb648', 900);
+    addEffect({ x, z }, '#d9b98a', 700);
+    const m = {
+      owner, mesh:parts.group, pivot:parts.pivot, bar:parts.bar, flash:parts.flash,
+      x, z, hp:MORTAR_HP, maxHp:MORTAR_HP, aim:owner.rotY, recoil:0, flashUntil:0, hitUntil:0,
+      nextFire: performance.now() + MORTAR_FIRE_INTERVAL*1000, dead:false
+    };
+    drawBar(m.bar, 1, '#ffb648');
+    mortars.push(m);
+    return m;
+  }
+
+  function destroyMortar(m, attacker){
+    m.dead = true;
+    addEffect({ x:m.x, z:m.z }, '#ff9d3d', 800);
+    addEffect({ x:m.x, z:m.z }, '#ff3b3b', 600);
+    addEffect({ x:m.x, z:m.z }, '#ffffff', 450);
+    disposeObject(m.mesh);
+    pushElimFeed(attacker.name, 'le mortier de ' + m.owner.name);
+    if (attacker.isPlayer) setMatchStatus('🦁 Mortier détruit !', 1800);
+    else if (m.owner.isPlayer) setMatchStatus(`🦁 ${attacker.name} a détruit ton mortier !`, 2200);
+  }
+
+  function damageMortar(attacker, m, dmg){
+    if (m.dead) return;
+    m.hp -= dmg;
+    drawBar(m.bar, m.hp / m.maxHp, m.hp > m.maxHp*0.4 ? '#ffb648' : '#ff5c68');
+    addEffect({ x:m.x, z:m.z }, '#ffb648', 450);
+    m.hitUntil = performance.now() + 120;
+    if (m.hp <= 0) destroyMortar(m, attacker);
+  }
+
+  // un coup d'épée touche les mortiers ennemis devant le combattant
+  function hitMortars(attacker){
+    for (const m of mortars){
+      if (m.dead || m.owner === attacker) continue;
+      const dx = m.x - attacker.pos.x, dz = m.z - attacker.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d > ATTACK_RANGE + 0.7) continue;
+      let diff = Math.abs(Math.atan2(dx, dz) - attacker.rotY);
+      diff = Math.min(diff, Math.PI*2 - diff);
+      if (diff < 1.3 || d < 1.0) damageMortar(attacker, m, DAMAGE);
+    }
+  }
+
+  function nearestHostileMortar(f, maxDist){
+    let best = null, bd = maxDist*maxDist;
+    for (const m of mortars){
+      if (m.dead || m.owner === f) continue;
+      const d = dist2(f.pos.x, f.pos.z, m.x, m.z);
+      if (d < bd){ bd = d; best = m; }
+    }
+    return best;
+  }
+
+  function fireMortar(m, now){
+    const list = equipTargets(m.owner);
+    if (!list.length) return;
+    const target = list[Math.floor(Math.random()*list.length)];
+    m.aim = Math.atan2(target.pos.x - m.x, target.pos.z - m.z);
+    m.pivot.rotation.y = m.aim;
+    m.recoil = 1;
+    m.flashUntil = now + 180;
+    const start = new THREE.Vector3(m.x + Math.sin(m.aim)*1.09, 1.4, m.z + Math.cos(m.aim)*1.09);
+
+    // rocher
+    const rock = new THREE.Group();
+    const stoneMesh = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.45, 0),
+      new THREE.MeshStandardMaterial({ color:'#4a443c', roughness:0.95, metalness:0, emissive:'#ff5a14', emissiveIntensity:0.55, flatShading:true })
+    );
+    rock.add(stoneMesh);
+    rock.add(new THREE.Mesh(new THREE.SphereGeometry(0.66, 10, 8), new THREE.MeshBasicMaterial({ color:'#ff8a3a', transparent:true, opacity:0.3, depthWrite:false, blending:THREE.AdditiveBlending })));
+    rock.position.copy(start);
+    scene.add(rock);
+
+    // le joueur visé est « entouré » : anneau, cage translucide et anneau qui se resserre
+    const marker = new THREE.Group();
+    const inner = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.06, 8, 32), new THREE.MeshBasicMaterial({ color:'#ff3b3b', transparent:true, opacity:0.95, depthWrite:false }));
+    inner.rotation.x = Math.PI/2;
+    const outer = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.045, 8, 32), new THREE.MeshBasicMaterial({ color:'#ffb648', transparent:true, opacity:0.85, depthWrite:false }));
+    outer.rotation.x = Math.PI/2;
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.95, 28), new THREE.MeshBasicMaterial({ color:'#ff3b3b', transparent:true, opacity:0.16, depthWrite:false, side:THREE.DoubleSide }));
+    disc.rotation.x = -Math.PI/2; disc.position.y = -0.09;
+    const cage = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 2.2, 24, 1, true), new THREE.MeshBasicMaterial({ color:'#ff3b3b', transparent:true, opacity:0.14, depthWrite:false, side:THREE.DoubleSide }));
+    cage.position.y = 1.0;
+    marker.add(inner, outer, disc, cage);
+    marker.position.set(target.pos.x, 0.12, target.pos.z);
+    scene.add(marker);
+
+    rocks.push({ mortar:m, target, rock, marker, inner, outer, start, born:now, dur:MORTAR_FLIGHT_TIME*1000, lastX:target.pos.x, lastZ:target.pos.z, done:false });
+    addEffect({ x:start.x, z:start.z }, '#ffb347', 500);
+    if (target.isPlayer){
+      showWarning('⚠ MORTIER SUR TOI !', 4200);
+      setMatchStatus(`🦁 Le mortier de ${m.owner.name} te vise : il va atterrir dans ${MORTAR_FLIGHT_TIME} secondes !`, 3500);
+    } else if (m.owner.isPlayer){
+      setMatchStatus(`🦁 Ton mortier vise ${target.name}`, 2000);
+    }
+  }
+
+  function updateMortars(dt, now){
+    for (const m of mortars){
+      if (m.dead) continue;
+      if (now >= m.nextFire){ fireMortar(m, now); m.nextFire = now + MORTAR_FIRE_INTERVAL*1000; }
+      m.recoil = Math.max(0, m.recoil - dt*3);
+      m.pivot.scale.y = 1 - m.recoil*0.08;
+      m.flash.visible = now < m.flashUntil;
+      m.mesh.scale.setScalar(now < m.hitUntil ? 1.05 : 1);
+    }
+    mortars = mortars.filter(m=>!m.dead);
+  }
+
+  function explodeRock(r){
+    const x = r.lastX, z = r.lastZ;
+    addEffect({ x, z }, '#ff3b3b', 800);
+    addEffect({ x, z }, '#ff9d3d', 650);
+    addEffect({ x, z }, '#ffffff', 450);
+    const player = getPlayer();
+    if (player && Math.hypot(player.pos.x - x, player.pos.z - z) < 6) flashScreen(r.target.isPlayer ? 0.4 : 0.15);
+    if (r.target.alive && !r.target.permanentlyEliminated) applyDamage(r.mortar.owner, r.target, MORTAR_DAMAGE);
+    r.done = true;
+    disposeObject(r.rock);
+    disposeObject(r.marker);
+  }
+
+  function updateRocks(dt, now){
+    for (const r of rocks){
+      if (r.done) continue;
+      const t = Math.min(1, (now - r.born)/r.dur);
+      const alive = r.target.alive && !r.target.permanentlyEliminated;
+      if (alive){ r.lastX = r.target.pos.x; r.lastZ = r.target.pos.z; }
+      r.marker.visible = alive;
+      r.marker.position.set(r.lastX, 0.12, r.lastZ);
+      r.outer.scale.setScalar(2.6 - 1.6*t);                 // l'anneau extérieur se resserre jusqu'à l'impact
+      r.inner.material.opacity = 0.6 + 0.4*Math.sin(now*0.02);
+      r.rock.position.set(
+        r.start.x + (r.lastX - r.start.x)*t,
+        r.start.y + (0.6 - r.start.y)*t + Math.sin(Math.PI*t)*12,
+        r.start.z + (r.lastZ - r.start.z)*t
+      );
+      r.rock.rotation.x += dt*5;
+      r.rock.rotation.z += dt*3;
+      if (t >= 1) explodeRock(r);
+    }
+    rocks = rocks.filter(r=>!r.done);
+  }
+
+  /* --------------------- ROBOTS : ils utilisent les équipements --------------------- */
+  function botUseEquipment(f){
+    if (equipAttacksBlocked()) return;
+    const now = performance.now();
+    if (!f.botEquip){
+      f.botEquip = [...ALL_EQUIPMENT].sort(()=>Math.random()-0.5).slice(0, 3);
+      f.botCd = {};
+      f.botNextThink = now + 4000 + Math.random()*5000;
+    }
+    if (now < f.botNextThink) return;
+    f.botNextThink = now + 900 + Math.random()*1300;
+    const near = nearestTarget(f);
+    if (!near) return;
+    const order = [...f.botEquip].sort(()=>Math.random()-0.5);
+    for (const type of order){
+      if ((f.botCd[type] || 0) > now) continue;
+      let used = false;
+      if (type === 'heal'){
+        if (f.hp < MAX_HP*0.4){
+          f.hp = MAX_HP; updateHealthBar(f); addEffect(f.pos, '#45d6c4', 900); used = true;
+        }
+      } else if (type === 'ice'){
+        if (near.dist < 4.5 && Math.random() < 0.75){
+          near.fighter.frozenUntil = now + 3000;
+          createIceVisual(near.fighter);
+          addEffect(near.fighter.pos, '#8ed8ff', 1000);
+          if (near.fighter.isPlayer) setMatchStatus(`❄ ${f.name} t'a gelé 3 secondes !`, 2500);
+          used = true;
+        }
+      } else if (type === 'fog'){
+        const p = getPlayer();
+        if (p && p.alive && Math.hypot(p.pos.x - f.pos.x, p.pos.z - f.pos.z) < 7 && Math.random() < 0.4){
+          playerBlindUntil = now + 7000;
+          setMatchStatus(`◌ ${f.name} t'aveugle avec du brouillard !`, 2500);
+          used = true;
+        }
+      } else if (type === 'cow'){
+        if (Math.random() < 0.35){ spawnCow(f); used = true; }
+      } else if (type === 'bolt'){
+        if (near.dist < 9 && Math.random() < 0.5){ strikeBolt(f); used = true; }
+      } else if (type === 'mortar'){
+        if (!mortars.some(m=>!m.dead && m.owner === f) && near.dist < 12 && Math.random() < 0.45){ placeMortar(f); used = true; }
+      }
+      if (used){
+        f.botCd[type] = now + (BOT_EQUIPMENT_COOLDOWN + Math.random()*10)*1000;
+        break;
+      }
+    }
+  }
+
   function useEquipment(type){
     if (!running || !APP.equipment.includes(type) || equipmentUsed.has(type)) return;
     const player = getPlayer();
@@ -2011,6 +2630,27 @@ const Match = (()=>{
       setTimeout(()=>{ if(performance.now() >= fogUntil && fogVisual){ try{scene.remove(fogVisual); fogVisual.geometry.dispose(); fogVisual.material.dispose();}catch(_){ } fogVisual=null; } },7200);
       return;
     }
+    if (type === 'cow' || type === 'bolt' || type === 'mortar'){
+      if (equipAttacksBlocked()){ setMatchStatus('Pas de combat pendant la première minute !', 1500); return; }
+      if (type === 'cow'){
+        spawnCow(player);
+        startEquipmentCooldown(type);
+        setMatchStatus(`🐄 La vache enragée broute… elle chargera dans ${COW_GRAZE_SECONDS} secondes`, 3000);
+        return;
+      }
+      if (type === 'bolt'){
+        const hit = strikeBolt(player);
+        if (!hit){ setMatchStatus('Aucun adversaire à foudroyer'); return; }
+        startEquipmentCooldown(type);
+        setMatchStatus(`⚡ ${hit.name} est foudroyé !`, 2000);
+        return;
+      }
+      if (mortars.some(m=>!m.dead && m.owner === player)){ setMatchStatus('Ton mortier est déjà en place'); return; }
+      placeMortar(player);
+      startEquipmentCooldown(type);
+      setMatchStatus('🦁 Mortier de lion posé ! Il tire toutes les 5 secondes', 2800);
+      return;
+    }
     const target = fighters
       .filter(f=>f !== player && f.alive)
       .sort((a,b)=>dist2(player.pos.x, player.pos.z, a.pos.x, a.pos.z) - dist2(player.pos.x, player.pos.z, b.pos.x, b.pos.z))[0];
@@ -2028,6 +2668,10 @@ const Match = (()=>{
   document.getElementById('ability-ice').addEventListener('click', ()=>useEquipment('ice'));
   document.getElementById('ability-fog').addEventListener('click', ()=>useEquipment('fog'));
   document.getElementById('ability-heal').addEventListener('click', ()=>useEquipment('heal'));
+  ['cow', 'bolt', 'mortar'].forEach(type=>{
+    const button = document.getElementById(`ability-${type}`);
+    if (button) button.addEventListener('click', ()=>useEquipment(type));
+  });
 
   // bouton "Équipement" au-dessus de l'attaque : affiche/masque les capacités utilisables
   document.getElementById('btn-match-equipment').addEventListener('click', ()=>{
@@ -2097,6 +2741,8 @@ const Match = (()=>{
       f.rotY = f.wanderAngle;
       return;
     }
+
+    botUseEquipment(f);
 
     // ---- Maxitrone : aucune attaque pendant la première minute ----
     if (currentGameMode === 'maxitrone'){
@@ -2186,6 +2832,20 @@ const Match = (()=>{
       if (d < best){ best = d; target = other; }
     }
     const speed = BASE_SPEED * speedMultiplier;
+    // les robots s'en prennent aux mortiers ennemis proches si aucun adversaire n'est au contact
+    const hostileMortar = nearestHostileMortar(f, 6.5);
+    if (hostileMortar && (!target || best > 3*3)){
+      const mdx = hostileMortar.x - f.pos.x, mdz = hostileMortar.z - f.pos.z;
+      const md = Math.hypot(mdx, mdz) || 1;
+      if (md > 1.9){
+        tryMove(f, mdx/md*speed*dt, mdz/md*speed*dt);
+      } else if (f.attackCooldown <= 0){
+        performAttack(f);
+        f.attackCooldown = ATTACK_COOLDOWN + Math.random()*0.4;
+      }
+      f.rotY = Math.atan2(mdx, mdz);
+      return;
+    }
     if (target && best < 14*14){
       const dx = target.pos.x - f.pos.x, dz = target.pos.z - f.pos.z;
       const d = Math.hypot(dx,dz) || 1;
@@ -2213,6 +2873,7 @@ const Match = (()=>{
       attacker.sword.rotation.z = -1.6;
       setTimeout(()=>{ if (attacker.sword) attacker.sword.rotation.z = -0.4; }, 150);
     }
+    hitMortars(attacker);
 
     if (currentGameMode === 'maxitrone' && maxitroneIsCombatPhase()) {
       let target = null, best = ATTACK_RANGE + 0.001;
@@ -2483,6 +3144,12 @@ const Match = (()=>{
     for (const f of fighters) updateFighter(f, dt);
     updateEffects();
     updateEquipmentCooldowns();
+    const nowT = performance.now();
+    updateCows(dt, nowT);
+    updateMortars(dt, nowT);
+    updateRocks(dt, nowT);
+    updateBolts(dt, nowT);
+    if (fxBlind) fxBlind.classList.toggle('show', nowT < playerBlindUntil);
     if (fogVisual){ const p=getPlayer(); if(p){ fogVisual.position.set(p.pos.x,1.5,p.pos.z); fogVisual.rotation.y += dt*0.15; } }
     if (currentGameMode === 'couronne' && crown) updateCrownState(dt);
     if (currentGameMode === 'maxitrone'){
@@ -2554,6 +3221,12 @@ const Match = (()=>{
     equipmentCooldownUntil.clear();
     clearEquipmentVisuals();
     document.querySelectorAll('#equipment-actions button').forEach(b=>{b.classList.remove('used');b.removeAttribute('data-cooldown');});
+    // seuls les 3 équipements choisis dans le lobby apparaissent en partie
+    document.querySelectorAll('#equipment-actions .ability-btn').forEach(b=>{
+      b.style.display = APP.equipment.includes(b.id.replace('ability-', '')) ? '' : 'none';
+    });
+    ensureEquipmentFx();
+    hideEquipmentFx();
     AudioEngine.unlock();
 
     // réinitialise l'état du mode adrénaline pour cette nouvelle partie
@@ -2581,6 +3254,7 @@ const Match = (()=>{
 
   function endMatch(opts = {}){
     running = false;
+    hideEquipmentFx();
     clearInterval(matchTimerInterval);
     clearTimeout(adrenalineTimeout);
     clearTimeout(adrenalineEndTimeout);
