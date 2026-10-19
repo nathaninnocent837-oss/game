@@ -833,25 +833,6 @@ if (!APP.equipment.length) APP.equipment = ['ice', 'fog', 'heal'];
   if (desc) desc.textContent = 'Ciel rose, musique et rond qui désigne un joueur.';
   card.classList.remove('selected', 'locked');
   reference.parentElement.appendChild(card);
-  card.addEventListener('click', ()=>{
-    const equipment = card.dataset.equipment;
-    if (APP.equipment.includes(equipment)){
-      APP.equipment = APP.equipment.filter(item=>item !== equipment);
-    } else if (APP.equipment.length < 3){
-      APP.equipment.push(equipment);
-    } else {
-      const counter = document.getElementById('equipment-count');
-      if (counter){
-        counter.classList.remove('shake');
-        void counter.offsetWidth;
-        counter.classList.add('shake');
-        setTimeout(()=>counter.classList.remove('shake'), 450);
-      }
-      return;
-    }
-    Store.save('trugo_equipment', APP.equipment);
-    refreshEquipmentCards();
-  });
 })();
 
 function refreshEquipmentCards(){
@@ -3180,7 +3161,6 @@ const Match = (()=>{
 
     // Son d'élimination à chaque élimination, y compris en Maxitrone définitif.
     AudioEngine.playEliminationSound();
-    setTimeout(()=>{ AudioEngine.speak('Eliminated member'); }, 400);
 
     if (currentGameMode === 'maxitrone' && target.throne?.destroyed){
       target.permanentlyEliminated = true;
