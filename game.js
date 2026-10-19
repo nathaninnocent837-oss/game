@@ -1437,7 +1437,7 @@ const COW_SPEED = 9;
 const COW_CHARGE_TIMEOUT = 20;     // sécurité : la vache disparaît si elle n'atteint personne
 const BOLT_DAMAGE = 350;           // dégâts de l'éclair (non précisés : à ajuster ici)
 const MORTAR_HP = 1321;
-const MORTAR_DAMAGE = 456;
+const MORTAR_DAMAGE = 120;
 const MORTAR_FIRE_INTERVAL = 5;    // secondes entre deux tirs
 const MORTAR_FLIGHT_TIME = 5;      // secondes avant que le rocher atterrisse
 const BOT_EQUIPMENT_COOLDOWN = 25; // recharge des équipements des robots
@@ -2274,7 +2274,7 @@ const Match = (()=>{
       let target=alive[0],best=Infinity; for(const f of alive){const d=dist2(s.mesh.position.x,s.mesh.position.z,f.pos.x,f.pos.z);if(d<best){best=d;target=f;}}
       const dx=target.pos.x-s.mesh.position.x,dz=target.pos.z-s.mesh.position.z,d=Math.hypot(dx,dz);
       if(d>1.25){s.mesh.position.x+=dx/d*1.8*dt;s.mesh.position.z+=dz/d*1.8*dt;s.mesh.rotation.y=Math.atan2(dx,dz);}
-      else if(now>=s.attackCooldown){s.attackCooldown=now+1200;target.hp-=700;updateHealthBar(target);addEffect(target.pos,'#e5e0cf',700);if(target.hp<=0)eliminate({name:'Nightark'},target);}
+      else if(now>=s.attackCooldown){s.attackCooldown=now+1200;target.hp-=10;updateHealthBar(target);addEffect(target.pos,'#e5e0cf',10);if(target.hp<=0)eliminate({name:'Nightark'},target);}
       s.mesh.rotation.x=Math.sin(now*0.006+s.phase)*0.04;
     });
     if(now>=nightarkUntil) finishNightark();
