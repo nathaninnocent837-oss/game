@@ -548,7 +548,7 @@
   ];
 
   function staffTabs() {
-    var tabs = [["members", "👥 Membres"], ["bans", "⛔ Bannis"], ["log", "📜 Journal"]];
+    var tabs = [["members", "👥 Membres"], ["bans", "⛔ Bannis"], ["inbox", "✉ Messages"], ["log", "📜 Journal"]];
     if (me && me.role === "admin") tabs.push(["announce", "📢 Annonce"]);
     $("#staff-tabs").innerHTML = tabs.map(function (t) {
       return '<button type="button" class="staff-tab' + (staff.tab === t[0] ? " active" : "") + '" data-tab="' + t[0] + '">' + t[1] + "</button>";
@@ -570,6 +570,7 @@
     var body = $("#staff-body");
     if (staff.tab === "members") return renderMembers(body);
     if (staff.tab === "bans") return renderBans(body);
+    if (staff.tab === "inbox") return renderInbox(body);
     if (staff.tab === "log") return renderLog(body);
     if (staff.tab === "announce") return renderAnnounce(body);
   }
@@ -659,6 +660,23 @@
     }).catch(function (err) { $("#staff-bans").innerHTML = '<li class="st-empty">' + esc(err.message) + "</li>"; });
   }
 
+  function renderInbox(body) {
+    body.innerHTML = '<ul class="st-list" id="staff-inbox"><li class="st-empty">Chargement…</li></ul>';
+    api("/center/inbox").then(function (data) {
+      var ul = $("#staff-inbox");
+      if (!ul) return;
+      ul.innerHTML = data.messages.length ? data.messages.map(function (m) {
+        return '<li class="st-member' + (m.handled ? " st-done" : "") + '">' +
+          '<div class="st-member-top"><span class="st-avatar role-ring-' + roleOfName(m.username) + '">' + esc(m.username.charAt(0).toUpperCase()) + "</span>" +
+          '<div class="st-member-info"><b class="pf-name role-' + roleOfName(m.username) + '">' + esc(m.username) + "</b>" +
+          "<small>" + fmtDate(m.created_at) + (m.handled ? " · traité" : "") + "</small>" +
+          '<small style="white-space:pre-wrap;color:#eaf0f6">' + esc(m.message) + "</small></div></div>" +
+          '<div class="st-member-actions"><button class="st-btn" data-act="profile" data-user="' + esc(m.username) + '">Profil</button>' +
+          (m.handled ? "" : '<button class="st-btn good" data-act="inbox-done" data-id="' + m.id + '">Marquer traité</button>') + "</div></li>";
+      }).join("") : '<li class="st-empty">Aucun message des joueurs. 📭</li>';
+    }).catch(function (err) { var ul = $("#staff-inbox"); if (ul) ul.innerHTML = '<li class="st-empty">' + esc(err.message) + "</li>"; });
+  }
+
   var ACTION_LABEL = {
     ban: "a banni", unban: "a débanni", warn: "a averti", promote: "a nommé modérateur",
     demote: "a retiré des modérateurs", announce: "a publié une annonce", "announce-clear": "a retiré l'annonce"
@@ -721,6 +739,7 @@
     else if (act === "sheet-warn") {
       staffDo("/staff/warn", "POST", { username: staff.sheet.username, message: $("#sheet-message").value }, function () { staff.sheet = null; refresh(); });
     }
+    else if (act === "inbox-done") staffDo("/center/inbox/" + btn.dataset.id + "/handled", "POST", {}, function () { renderStaff(); });
     else if (act === "unban") staffDo("/staff/unban", "POST", { username: user }, refresh);
     else if (act === "promote") staffDo("/staff/role", "POST", { username: user, role: "moderator" }, refresh);
     else if (act === "demote") staffDo("/staff/role", "POST", { username: user, role: "member" }, refresh);
