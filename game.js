@@ -11,7 +11,7 @@ const BOT_NAMES = ['Raven','Nyx','Kato','Vex','Juno','Milo','Zed','Ash','Ika','B
 /* ---------------------------------------------------------
    MEDAILLES / POINTS DE CLASSEMENT
 --------------------------------------------------------- */
-const RANK_POINTS = [12, 9, 6, 4, 1, -3, -6, -8, -10, -12]; // top1 -> top10
+const RANK_POINTS = [13, 10, 7, 5, 2, -2, -5, -7, -10, -13]; // top1 -> top10
 function pointsForRank(rank){
   return (rank >= 1 && rank <= RANK_POINTS.length) ? RANK_POINTS[rank - 1] : 0;
 }
