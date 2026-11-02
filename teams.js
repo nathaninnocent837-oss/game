@@ -179,6 +179,8 @@
     $("#tm-back").addEventListener("click", function () { showList(); });
     $("#tm-members-btn").addEventListener("click", toggleMembers);
     $("#tm-composer").addEventListener("submit", function (e) { e.preventDefault(); sendText(); });
+    $("#tm-send").addEventListener("click", function (e) { e.preventDefault(); sendText(); });
+    $("#tm-input").addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendText(); } });
     $("#tm-mic").addEventListener("click", startRecording);
     $("#tm-rec-cancel").addEventListener("click", function () { cancelRecording(false); });
     $("#tm-rec-send").addEventListener("click", function () { finishRecording(); });
@@ -268,16 +270,20 @@
   }
 
   function sendText() {
-    var input = $("#tm-input");
+    var input = $("#tm-input"), send = $("#tm-send");
     if (!team || !input) return;
     var text = input.value.trim();
     if (!text) return;
-    input.value = "";
+    if (send) { send.disabled = true; send.classList.add("is-sending"); }
     postJson("/" + team.id + "/messages", { text: text }).then(function () {
+      input.value = "";
+      input.focus();
       loadMessages(false);
     }).catch(function (err) {
-      input.value = text;
-      toast(err.message);
+      toast(err.message || "Impossible d'envoyer le message.");
+      input.focus();
+    }).finally(function () {
+      if (send) { send.disabled = false; send.classList.remove("is-sending"); }
     });
   }
 
