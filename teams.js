@@ -37,6 +37,7 @@
     opts.credentials = "same-origin";
     return fetch(API + path, opts).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (d) {
+        if (r.status === 404 && !d.error) throw new Error("Erreur 404 : le serveur n'a pas la route des teams. Redéploie routes/profile.js (nouvelle version) sur Render.");
         if (!r.ok) throw new Error(d.error || "Erreur (" + r.status + ")");
         return d;
       });

@@ -22,7 +22,7 @@
     if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
     return fetch(API + path, init).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (d) {
-        if (!r.ok) { var e = new Error(d.error || "Erreur"); e.status = r.status; throw e; }
+        if (!r.ok) { var e = new Error(d.error || (r.status === 404 ? "Erreur 404 : redéploie routes/profile.js sur le serveur" : "Erreur")); e.status = r.status; throw e; }
         return d;
       });
     });
