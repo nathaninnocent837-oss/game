@@ -41,6 +41,7 @@ app.use(
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/friends", require("./routes/friends"));
 app.use("/api/profile", require("./routes/profile"));
+app.use("/api/groups", require("./routes/groups"));
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
