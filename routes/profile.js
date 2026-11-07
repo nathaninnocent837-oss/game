@@ -1325,5 +1325,5 @@ router.delete(
     res.json({ message: "Annonce retirée." });
   })
 );
-
+router.use("/groups", require("./groups"));
 module.exports = router;
