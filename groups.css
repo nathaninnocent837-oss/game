@@ -232,3 +232,15 @@
 #gp-launch small{display:block;color:#93a3b5;font-size:.8rem}
 #gp-launch b{display:block;font-size:1.25rem;margin:.15rem 0}
 .gp-launch-n{font-size:3.2rem;font-weight:800;color:#e8b04a;line-height:1}
+
+/* ---------- profil : bio, note, activité ---------- */
+.gp-lbl{display:block;font-size:.75rem;color:var(--text-dim);margin:.5rem 0 .2rem}
+.gp-lbl small{opacity:.8}
+.gp-in{width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:.5rem .65rem;color:inherit;font:inherit;resize:vertical}
+.gp-in:focus{outline:none;border-color:var(--gold,#e8b04a)}
+.gp-privacy{font-size:.72rem;line-height:1.35;color:var(--text-dim);margin:.2rem 0 .6rem}
+small.gp-act{display:block;font-size:.72rem;color:#8bd3ff;margin-top:.05rem}
+small.gp-note{display:block;font-size:.72rem;font-style:italic;color:var(--text-dim);margin-top:.05rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gp-acts{display:flex;flex-direction:column;align-items:center;margin-bottom:.3rem}
+.gp-note{font-style:italic;color:var(--text-dim);font-size:.82rem}
+.gp-bio{margin:.4rem 0 .8rem;padding:.55rem .7rem;border-radius:10px;background:rgba(255,255,255,.05);font-size:.85rem;line-height:1.4;text-align:left;white-space:pre-wrap;word-break:break-word}
