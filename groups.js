@@ -62,7 +62,7 @@
   var pref = loadPrefs();
 
   function loadPrefs() {
-    var d = { sound: true, enterSend: true, size: "m", anim: true, broadcast: true };
+    var d = { sound: true, enterSend: true, size: "m", anim: true, broadcast: true, music: false };
     try { var v = JSON.parse(localStorage.getItem("trugo_groups_prefs") || "{}"); for (var k in v) d[k] = v[k]; } catch (e) {}
     return d;
   }
@@ -837,7 +837,7 @@
   function memberRow(m) {
     return '<div class="gp-mem" data-m="' + esc(m.id) + '">' + avatar(m.username, "sm", m.online, false, m.id, m.av) +
       '<div class="gp-mem-info"><b>' + esc(m.username) + (m.me ? " (toi)" : "") + (BADGE[m.badge] ? '<span class="gp-tag ' + m.badge + '">' + BADGE[m.badge] + "</span>" : "") + (m.timeoutUntil ? '<span class="gp-tag to">timeout</span>' : "") +
-      '</b><small class="' + (m.online ? "on" : "") + '">' + presence(m) + "</small></div></div>";
+      '</b><small class="' + (m.online ? "on" : "") + '">' + presence(m) + "</small>" + statusLines(m) + (m.note ? '<small class="gp-note">' + esc(m.note) + "</small>" : "") + "</div></div>";
   }
   function renderMembersBody(body) {
     var on = S.members.filter(function (m) { return m.online; }).length;
@@ -872,7 +872,7 @@
     var mo = modal('<div style="text-align:center">' + avatar(m.username, "lg", m.online, false, m.id, m.av) +
       '<h3 style="margin-top:.6rem">' + esc(m.username) + "</h3>" +
       (BADGE[m.badge] ? '<span class="gp-tag ' + m.badge + '" style="margin:0">' + BADGE[m.badge] + "</span>" : "") +
-      '<p class="sub" style="margin:.4rem 0 .8rem">' + (m.online ? '<span style="color:#35e08a">\u25cf </span>' : "") + presence(m) + (m.timeoutUntil ? " \u00b7 timeout " + fmtRemaining(m.timeoutUntil) : "") + "</p></div>" +
+      '<p class="sub" style="margin:.4rem 0 .8rem">' + (m.online ? '<span style="color:#35e08a">\u25cf </span>' : "") + presence(m) + (m.timeoutUntil ? " \u00b7 timeout " + fmtRemaining(m.timeoutUntil) : "") + "</p>" + (m.status ? '<div class="gp-acts">' + statusLines(m) + "</div>" : "") + (m.note ? '<p class="gp-note" style="margin:.2rem 0">' + esc(m.note) + "</p>" : "") + (m.bio ? '<p class="gp-bio">' + esc(m.bio) + "</p>" : "") + "</div>" +
       '<div class="gp-grid">' +
         (!m.me ? '<button class="gp-tile" data-a="report">' + ic("flag") + "Signaler</button>" : "") +
         (canMod ? '<button class="gp-tile" data-a="timeout">' + ic("clock") + "Timeout</button>" : "") +
@@ -991,7 +991,7 @@
     return '<div class="gp-switch"><div>' + label + "<small>" + hint + '</small></div><button class="gp-tg' + (pref[key] ? " on" : "") + '" data-pref="' + key + '"></button></div>';
   }
   function prefsHtml() {
-    return profileHtml() + '<div class="gp-sec" style="padding-left:0">Pr\u00e9f\u00e9rences</div>' +
+    return profileHtml() + myProfileHtml() + '<div class="gp-sec" style="padding-left:0">Pr\u00e9f\u00e9rences</div>' +
       sw("sound", "Son des messages", "Petit son quand quelqu'un \u00e9crit") +
       sw("enterSend", "Entr\u00e9e pour envoyer", "Maj + Entr\u00e9e pour aller \u00e0 la ligne") +
       sw("anim", "Animations", "D\u00e9sactive-les pour plus de fluidit\u00e9") +
@@ -1000,9 +1000,10 @@
   }
   function bindPrefs(root) {
     bindProfile(root);
+    bindMyProfile(root);
     root.addEventListener("click", function (e) {
       var t = e.target.closest("[data-pref]"), s = e.target.closest("[data-size]");
-      if (t) { pref[t.dataset.pref] = !pref[t.dataset.pref]; t.classList.toggle("on", pref[t.dataset.pref]); savePrefs(); applyPrefs(); syncLive(); }
+      if (t) { pref[t.dataset.pref] = !pref[t.dataset.pref]; t.classList.toggle("on", pref[t.dataset.pref]); savePrefs(); applyPrefs(); syncLive(); if (t.dataset.pref === "music") Live.send(true); }
       if (s) { pref.size = s.dataset.size; root.querySelectorAll("[data-size]").forEach(function (x) { x.classList.toggle("on", x === s); }); savePrefs(); applyPrefs(); }
     });
   }
@@ -1093,6 +1094,111 @@
     });
   }
 
+  /* ---------------- biographie, note et activit\u00e9 en direct ---------------- */
+  var LIVE_TXT = { home: "Le joueur est chez lui", walk: "Le joueur marche", travel: "Le joueur voyage", music: "Le joueur \u00e9coute de la musique" };
+  function statusLines(m) {
+    var st = m && m.status; if (!st) return "";
+    var out = [];
+    if (st.home) out.push(LIVE_TXT.home);
+    if (st.move) out.push(LIVE_TXT[st.move]);
+    if (st.music) out.push(LIVE_TXT.music);
+    return out.map(function (t) { return '<small class="gp-act">' + esc(t) + "</small>"; }).join("");
+  }
+  var P = { bio: "", note: "", live: false, loaded: false };
+  function loadProfile() {
+    return request("/profile/me").then(function (d) { P.bio = d.bio || ""; P.note = d.note || ""; P.live = !!d.live; P.loaded = true; Live.sync(); return P; }).catch(function () { return P; });
+  }
+  function saveProfile(patch) {
+    return post("/profile/me", patch).then(function (d) { P.bio = d.bio; P.note = d.note; P.live = d.live; Live.sync(); return d; });
+  }
+  var Live = (function () {
+    var watchId = null, samples = [], act = null, timer = null, lastSent = 0;
+    function dist(a, b) {
+      var R = 6371000, r = Math.PI / 180, dLat = (b.lat - a.lat) * r, dLon = (b.lon - a.lon) * r;
+      var x = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      return 2 * R * Math.asin(Math.sqrt(x));
+    }
+    function onPos(p) {
+      var c = p.coords; samples.push({ t: Date.now(), lat: c.latitude, lon: c.longitude, acc: c.accuracy || 50 });
+      var cut = Date.now() - 120000; samples = samples.filter(function (s) { return s.t >= cut; });
+    }
+    // Classe l'activit\u00e9 sur au moins 30 s. Les coordonn\u00e9es ne quittent jamais l'appareil : seul \u00ab still / walk / travel \u00bb est envoy\u00e9.
+    function classify() {
+      if (samples.length < 2) return act;
+      var last = samples[samples.length - 1], first = null;
+      for (var i = 0; i < samples.length; i++) { if (last.t - samples[i].t >= 30000) first = samples[i]; }
+      if (!first) return act;
+      var d = dist(first, last), dt = (last.t - first.t) / 1000, noise = Math.max(20, first.acc, last.acc);
+      if (d <= noise) return "still";
+      var v = d / dt;
+      if (v < 0.4) return "still";
+      return v <= 2.8 ? "walk" : "travel";
+    }
+    function musicNow() {
+      if (pref.music) return true;
+      try { if (navigator.mediaSession && navigator.mediaSession.playbackState === "playing") return true; } catch (e) {}
+      var a = document.querySelectorAll("audio");
+      for (var i = 0; i < a.length; i++) { var x = a[i]; if (!x.paused && !x.muted && !x.srcObject && !/^blob:/.test(x.currentSrc || "")) return true; }
+      return false;
+    }
+    function send(force) {
+      if (!P.live) return;
+      var now = Date.now(); if (!force && now - lastSent < 25000) return; lastSent = now;
+      act = classify();
+      post("/live", { act: act, music: musicNow() }).then(function (d) { if (d && d.live === false) stop(); }).catch(function () {});
+    }
+    function start() {
+      if (watchId != null || !navigator.geolocation) { if (!timer) timer = setInterval(function () { send(false); }, 30000); send(true); return; }
+      try { watchId = navigator.geolocation.watchPosition(onPos, function () {}, { enableHighAccuracy: false, maximumAge: 15000, timeout: 60000 }); } catch (e) {}
+      if (!timer) timer = setInterval(function () { send(false); }, 30000);
+      send(true);
+    }
+    function stop() {
+      if (watchId != null) { try { navigator.geolocation.clearWatch(watchId); } catch (e) {} watchId = null; }
+      clearInterval(timer); timer = null; samples = []; act = null;
+    }
+    function sync() { if (P.live) start(); else stop(); }
+    document.addEventListener("visibilitychange", function () { if (!document.hidden) send(true); });
+    // demande l'autorisation de position (n\u00e9cessaire pour savoir si la personne bouge)
+    function askPermission() {
+      return new Promise(function (resolve) {
+        if (!navigator.geolocation) return resolve("unsupported");
+        navigator.geolocation.getCurrentPosition(function () { resolve("granted"); }, function (e) { resolve(e && e.code === 1 ? "denied" : "error"); }, { timeout: 15000, maximumAge: 60000 });
+      });
+    }
+    return { sync: sync, start: start, stop: stop, ask: askPermission, send: send };
+  })();
+  function myProfileHtml() {
+    return '<div class="gp-sec" style="padding-left:0">\u00c0 propos de moi</div>' +
+      '<label class="gp-lbl">Note <small>(courte, visible \u00e0 c\u00f4t\u00e9 de ton nom)</small></label><input class="gp-in" id="gp-note" maxlength="60" placeholder="Ex : en qu\u00eate de la couronne" value="' + esc(P.note) + '">' +
+      '<label class="gp-lbl">Biographie</label><textarea class="gp-in" id="gp-bio" rows="3" maxlength="300" placeholder="Parle un peu de toi\u2026">' + esc(P.bio) + '</textarea>' +
+      '<button class="gp-btn gold block" id="gp-bio-save" style="margin:.4rem 0 .8rem">Enregistrer</button>' +
+      '<div class="gp-sec" style="padding-left:0">Activit\u00e9 en direct</div>' +
+      '<div class="gp-switch"><div>Partager mon activit\u00e9<small>Affiche \u00ab chez lui \u00bb, \u00ab marche \u00bb, \u00ab voyage \u00bb ou \u00ab \u00e9coute de la musique \u00bb sous ta pr\u00e9sence. D\u00e9sactiv\u00e9 par d\u00e9faut.</small></div><button class="gp-tg' + (P.live ? " on" : "") + '" id="gp-live-tg"></button></div>' +
+      '<p class="gp-privacy" id="gp-live-note">Ta position GPS n\'est jamais envoy\u00e9e ni enregistr\u00e9e : seule l\'activit\u00e9 d\u00e9duite l\'est. Ton navigateur te demandera l\'acc\u00e8s \u00e0 la localisation, et il ne la lit que lorsque le jeu est ouvert (un site web ne peut pas la suivre quand il est ferm\u00e9).</p>' +
+      sw("music", "Je suis en train d'\u00e9couter de la musique", "Un site ne voit pas tes autres applis : active-le toi-m\u00eame (affich\u00e9 seulement si le partage est activ\u00e9)");
+  }
+  function bindMyProfile(root) {
+    var save = root.querySelector("#gp-bio-save"); if (!save) return;
+    loadProfile().then(function () {
+      var n = root.querySelector("#gp-note"), b = root.querySelector("#gp-bio"), t = root.querySelector("#gp-live-tg");
+      if (n && document.activeElement !== n) n.value = P.note; if (b && document.activeElement !== b) b.value = P.bio; if (t) t.classList.toggle("on", P.live);
+    });
+    save.addEventListener("click", function () {
+      saveProfile({ note: root.querySelector("#gp-note").value, bio: root.querySelector("#gp-bio").value }).then(function () { toast("Profil enregistr\u00e9"); loadMembers(); }).catch(handleErr);
+    });
+    var tg = root.querySelector("#gp-live-tg"), note = root.querySelector("#gp-live-note");
+    tg.addEventListener("click", function () {
+      if (P.live) return saveProfile({ live: false }).then(function () { tg.classList.remove("on"); toast("Partage d'activit\u00e9 d\u00e9sactiv\u00e9"); }).catch(handleErr);
+      note.textContent = "Autorise la localisation dans la fen\u00eatre de ton navigateur\u2026";
+      Live.ask().then(function (r) {
+        if (r === "denied") { note.textContent = "Localisation refus\u00e9e : autorise-la dans les r\u00e9glages du site pour activer le partage."; return toast("Localisation refus\u00e9e", true); }
+        if (r === "unsupported") { note.textContent = "Ce navigateur ne g\u00e8re pas la localisation : seule la musique pourra \u00eatre partag\u00e9e."; }
+        return saveProfile({ live: true }).then(function () { tg.classList.add("on"); toast("Partage d'activit\u00e9 activ\u00e9"); });
+      }).catch(handleErr);
+    });
+  }
+
   /* ---------------- \u00e9quipes de jeu synchronis\u00e9es avec le serveur ---------------- */
   var T = { team: null, busy: false, lastLaunch: null, bypass: false, cd: null };
   var MODE_NAMES = { couronne: "Couronne Hunter", maxitrone: "Maxitrone", frappe: "Frappe Dolling" };
@@ -1132,7 +1238,7 @@
     var amLeader = t.members.some(function (m) { return m.me && m.leader; });
     box.innerHTML = '<h3>Membres de l\'\u00e9quipe (' + t.members.length + "/" + t.max + ")</h3>" +
       t.members.map(function (m) {
-        return '<div class="gp-tm">' + avatar(m.username, "sm", m.online, false, m.id, m.av) + '<div class="gp-tm-i"><b>' + esc(m.username) + (m.me ? " (toi)" : "") + "</b><small>" + (m.online ? "En ligne \u00b7 maintenant" : esc(m.ago || "hors ligne")) + "</small></div>" +
+        return '<div class="gp-tm">' + avatar(m.username, "sm", m.online, false, m.id, m.av) + '<div class="gp-tm-i"><b>' + esc(m.username) + (m.me ? " (toi)" : "") + "</b><small>" + (m.online ? "En ligne \u00b7 maintenant" : esc(m.ago || "hors ligne")) + "</small>" + statusLines(m) + (m.note ? '<small class="gp-note">' + esc(m.note) + "</small>" : "") + "</div>" +
           (m.leader ? '<span class="gp-tm-b">Chef</span>' : "") +
           (amLeader && !m.me ? '<button class="gp-btn red" data-kick="' + esc(m.id) + '" style="padding:.2rem .5rem;font-size:.72rem">Exclure</button>' : "") + "</div>";
       }).join("") +
@@ -1627,6 +1733,7 @@
     pendingInvite();
     if (!hookTeamPanel()) { var mo2 = new MutationObserver(function () { if (hookTeamPanel()) mo2.disconnect(); }); mo2.observe(document.body, { childList: true, subtree: true }); setTimeout(function () { mo2.disconnect(); }, 60000); }
     setTimeout(loadTeam, 1500);
+    setTimeout(loadProfile, 2500);
     if (!window.__trugoTeamSync && !document.querySelector('script[src*="teamsync"]')) { var ts = document.createElement("script"); ts.src = "teamsync.js?v=2"; document.head.appendChild(ts); }
     setInterval(teamLoop, 2000);
     if (!hookPlay()) { var mo3 = new MutationObserver(function () { if (hookPlay()) mo3.disconnect(); }); mo3.observe(document.body, { childList: true, subtree: true }); setTimeout(function () { mo3.disconnect(); }, 60000); }
