@@ -1,0 +1,74 @@
+/* TRUGO - equipment-wheel.css : panneau Equipement en roulettes de casino */
+#panel-equipment.ew-on .equipment-list,
+#panel-equipment.ew-on .equipment-intro,
+#panel-equipment.ew-on .equipment-count{display:none!important}
+#panel-equipment.ew-on .equipment-panel{max-width:560px}
+
+.ew-root{--ew-gold:#ffd56b;--ew-gold-d:#b8791b;--ew-red:#b3122b;user-select:none;-webkit-user-select:none}
+.ew-hint{margin:.1rem 0 .9rem;text-align:center;font-size:.85rem;color:var(--text-dim,#93a3b5)}
+.ew-hint b{color:var(--gold-soft,#ffd58a);font-weight:600}
+.ew-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 12px;align-items:start}
+.ew-wheel:first-child{grid-column:1/-1;width:min(100%,320px);justify-self:center}
+
+.ew-plaque{display:flex;align-items:center;justify-content:center;gap:.4rem;margin:0 auto -9px;position:relative;z-index:3;width:max-content;max-width:92%;
+  padding:.18rem .85rem;border-radius:99px;font:700 .72rem/1.3 var(--font-display,'Rajdhani',sans-serif);letter-spacing:.14em;text-transform:uppercase;color:#2a1403;
+  background:linear-gradient(#ffe9a8,#e0a93a);box-shadow:0 3px 8px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.7)}
+.ew-frame{position:relative;padding:7px;border-radius:24px;
+  background:linear-gradient(145deg,#ffe28a,#b8791b 42%,#ffd66b 58%,#7d4a0c);
+  box-shadow:0 10px 26px rgba(0,0,0,.55),0 0 0 1px rgba(0,0,0,.6),0 0 22px rgba(255,170,40,.18)}
+.ew-frame::after{content:"";position:absolute;inset:2.5px;border-radius:22px;border:2px dotted rgba(255,255,255,.8);pointer-events:none;opacity:.85}
+.ew-wheel.spin .ew-frame::after{animation:ewBlink .28s steps(2) infinite}
+.ew-wheel.spin .ew-frame{box-shadow:0 10px 26px rgba(0,0,0,.55),0 0 30px rgba(255,190,60,.55)}
+@keyframes ewBlink{50%{border-color:rgba(255,80,80,.95);opacity:1}}
+
+.ew-win{position:relative;height:var(--ew-h,230px);border-radius:17px;overflow:hidden;touch-action:none;cursor:grab;outline:none;
+  background:linear-gradient(#150811,#2e1020 50%,#150811);
+  box-shadow:inset 0 0 0 2px rgba(0,0,0,.65),inset 0 10px 24px rgba(0,0,0,.75),inset 0 -10px 24px rgba(0,0,0,.75)}
+.ew-win:active{cursor:grabbing}
+.ew-win:focus-visible{box-shadow:inset 0 0 0 2px rgba(0,0,0,.65),0 0 0 3px var(--teal,#45d6c4)}
+.ew-wheel.small .ew-win{--ew-h:190px}
+.ew-band{position:absolute;left:0;right:0;top:50%;height:var(--ew-row,58px);transform:translateY(-50%);pointer-events:none;z-index:1;
+  background:linear-gradient(90deg,rgba(255,200,80,.04),rgba(255,200,80,.2),rgba(255,200,80,.04));
+  border-top:2px solid rgba(255,213,107,.85);border-bottom:2px solid rgba(255,213,107,.85)}
+.ew-ptr{position:absolute;top:50%;width:0;height:0;transform:translateY(-50%);z-index:4;pointer-events:none;border-style:solid}
+.ew-ptr.l{left:0;border-width:9px 0 9px 11px;border-color:transparent transparent transparent #ff3b57;filter:drop-shadow(0 0 4px rgba(255,59,87,.8))}
+.ew-ptr.r{right:0;border-width:9px 11px 9px 0;border-color:transparent #ff3b57 transparent transparent;filter:drop-shadow(0 0 4px rgba(255,59,87,.8))}
+.ew-shade{position:absolute;left:0;right:0;height:36%;pointer-events:none;z-index:3}
+.ew-shade.t{top:0;background:linear-gradient(#0c0409,rgba(12,4,9,0))}
+.ew-shade.b{bottom:0;background:linear-gradient(rgba(12,4,9,0),#0c0409)}
+.ew-gloss{position:absolute;inset:0;pointer-events:none;z-index:5;background:linear-gradient(100deg,rgba(255,255,255,.1),rgba(255,255,255,0) 28%,rgba(255,255,255,0) 72%,rgba(255,255,255,.05))}
+
+.ew-it{position:absolute;left:50%;top:50%;width:90%;height:var(--ew-row,58px);display:flex;align-items:center;justify-content:center;gap:.6rem;
+  will-change:transform,opacity;color:#c9b9bf;font:700 1rem/1.1 var(--font-display,'Rajdhani',sans-serif);letter-spacing:.03em;white-space:nowrap}
+.ew-it .ic{font-size:1.9rem;line-height:1;flex:none;filter:saturate(.8)}
+.ew-it .nm{overflow:hidden;text-overflow:ellipsis;max-width:62%}
+.ew-wheel.small .ew-it{gap:.4rem;font-size:.9rem}
+.ew-wheel.small .ew-it .ic{font-size:1.55rem}
+.ew-it.center{color:#fff1c2}
+.ew-it.center .ic{filter:none;text-shadow:0 0 14px var(--c,#ffd56b),0 0 28px var(--c,#ffd56b)}
+.ew-it.taken .nm{opacity:.55}
+.ew-it.taken .ic{opacity:.45}
+.ew-it .tk{position:absolute;right:0;top:50%;transform:translateY(-50%);font:700 .58rem/1 var(--font-body,Inter,sans-serif);letter-spacing:.05em;padding:.18rem .35rem;border-radius:6px;background:rgba(255,255,255,.1);color:#d9c7ce}
+.ew-wheel.small .ew-it .tk{display:none}
+
+.ew-nav{position:absolute;left:50%;transform:translateX(-50%);z-index:6;width:34px;height:20px;border:0;border-radius:8px;cursor:pointer;padding:0;
+  background:rgba(0,0,0,.35);color:#ffd56b;font-size:.7rem;line-height:1;display:flex;align-items:center;justify-content:center}
+.ew-nav:hover{background:rgba(255,213,107,.2)}
+.ew-nav.up{top:5px}.ew-nav.dn{bottom:5px}
+
+.ew-info{margin-top:.55rem;text-align:center;min-height:4.4em}
+.ew-info b{display:block;font:700 1.05rem/1.15 var(--font-display,'Rajdhani',sans-serif);color:var(--gold-soft,#ffd58a);letter-spacing:.03em}
+.ew-info small{display:block;margin-top:.15rem;font-size:.74rem;line-height:1.35;color:var(--text-dim,#93a3b5)}
+.ew-wheel.small .ew-info small{font-size:.68rem}
+
+.ew-actions{display:flex;gap:.6rem;justify-content:center;margin:1rem 0 .3rem}
+.ew-draw{flex:1;max-width:260px;border:0;border-radius:14px;padding:.75rem 1rem;cursor:pointer;font:700 1rem/1 var(--font-display,'Rajdhani',sans-serif);letter-spacing:.08em;text-transform:uppercase;color:#2a1403;
+  background:linear-gradient(#ffe28a,#e0a02f);box-shadow:0 6px 0 #8a5410,0 10px 18px rgba(0,0,0,.45);transition:transform .08s,box-shadow .08s}
+.ew-draw:active{transform:translateY(4px);box-shadow:0 2px 0 #8a5410,0 4px 10px rgba(0,0,0,.45)}
+.ew-draw[disabled]{opacity:.6;cursor:default}
+.ew-snd{width:46px;border:1px solid var(--panel-border,#232f3d);border-radius:14px;background:var(--panel,#131a23);color:var(--text,#eaf0f6);cursor:pointer;font-size:1.1rem}
+.ew-chips{display:flex;flex-wrap:wrap;gap:.4rem;justify-content:center;margin:.7rem 0 .2rem}
+.ew-chip{display:inline-flex;align-items:center;gap:.3rem;padding:.25rem .6rem;border-radius:99px;font-size:.76rem;background:rgba(255,213,107,.1);border:1px solid rgba(255,213,107,.35);color:var(--gold-soft,#ffd58a)}
+@media (max-width:380px){.ew-wheel.small .ew-it .nm{max-width:56%}.ew-wheel.small .ew-it{font-size:.8rem}}
+@media (prefers-reduced-motion:reduce){.ew-wheel.spin .ew-frame::after{animation:none}}
+.ew-it .tk:empty{display:none}
