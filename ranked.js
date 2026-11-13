@@ -17,14 +17,17 @@
   ];
   window.TRUGO_LEAGUES = LEAGUES;
   var API = null, LS = "trugo_rk";
-  var st = { season: 1, endsAt: 0, offset: 0, elims: 0, pending: [], rank: null };
+  var SUP = [ {n:"Suprême",c:"#ffffff",rb:1},{n:"Suprême 1",c:"#ff6ad5"},{n:"Suprême 2",c:"#ff4d8d"},{n:"Suprême 3",c:"#ff3b3b"},{n:"Suprême 4",c:"#ff9a1f"},{n:"Suprême 5",c:"#ffe14d"},{n:"Grand Suprême",c:"#7dffb2"},{n:"Maître Suprême",c:"#3dd9ff"},{n:"Champion Suprême",c:"#7d8bff"},{n:"Titan Suprême",c:"#c46bff"},{n:"Suprématie",c:"#ffd34d",rb:1} ];
+  window.TRUGO_SUPREME = SUP;
+  var supD = null, mode = "season", supSeen = 0;
+  var st = { sup: null, season: 1, endsAt: 0, offset: 0, elims: 0, pending: [], rank: null };
   var top = { players: [], counts: [], total: 0 }, cur = 0, tab = "league", panel = null, cdTimer = null, topTimer = null;
 
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function leagueIdx(e) { var i = 0; for (var k = 0; k < LEAGUES.length; k++) if (e >= LEAGUES[k].min) i = k; return i; }
   function now() { return Date.now() + st.offset; }
-  function load() { try { var o = JSON.parse(localStorage.getItem(LS) || "null"); if (o) { st.season = o.season || 1; st.endsAt = o.endsAt || 0; st.elims = o.elims || 0; st.pending = o.pending || []; } } catch (e) {} }
-  function save() { try { localStorage.setItem(LS, JSON.stringify({ season: st.season, endsAt: st.endsAt, elims: st.elims, pending: st.pending })); } catch (e) {} }
+  function load() { try { var o = JSON.parse(localStorage.getItem(LS) || "null"); if (o) { st.sup = o.sup == null ? null : o.sup; supSeen = o.supSeen || 0; st.season = o.season || 1; st.endsAt = o.endsAt || 0; st.elims = o.elims || 0; st.pending = o.pending || []; } } catch (e) {} }
+  function save() { try { localStorage.setItem(LS, JSON.stringify({ sup: st.sup, supSeen: supSeen, season: st.season, endsAt: st.endsAt, elims: st.elims, pending: st.pending })); } catch (e) {} }
 
   /* ----- API ----- */
   function detectApi() {
@@ -49,6 +52,7 @@
     if (d.now) st.offset = d.now - Date.now();
     st.elims = d.elims + pendingSum();
     if (d.rank) st.rank = d.rank;
+    if (d.sup !== undefined) { var was = st.sup; st.sup = d.sup; if (was == null && d.sup != null && panel) paintMode(); }
     save(); syncGame(false); paintHud(); if (panel && panel.classList.contains("open")) paintMe();
   }
   function fetchMe() { return call("/ranked/me").then(applyServer).catch(function () {}); }
@@ -92,8 +96,8 @@
 
   /* ----- embleme SVG neon (de plus en plus riche) ----- */
   var uidN = 0;
-  function emblem(i, c, size) {
-    var u = "rk" + (++uidN), r = LEAGUES[i].rainbow;
+  function emblem(i, c, size, rb) {
+    var u = "rk" + (++uidN), r = rb !== undefined ? rb : LEAGUES[i].rainbow;
     var g = '<defs><linearGradient id="' + u + 'a" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + c + '" stop-opacity=".95"/><stop offset="1" stop-color="#0a0c14"/></linearGradient>' +
       '<linearGradient id="' + u + 'b" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".5" stop-color="' + c + '"/><stop offset="1" stop-color="#fff" stop-opacity=".4"/></linearGradient></defs>';
     var s = "";
@@ -111,6 +115,77 @@
     return '<svg class="rk-emb' + (r ? " rainbow" : "") + '" viewBox="-8 -6 136 150" width="' + size + '" height="' + (size * 1.1) + '" aria-hidden="true">' + g + s + "</svg>";
   }
 
+
+  /* ----- ligues apres Supreme : arene 2 h vs 9 bots, puis 1000 kills / palier ----- */
+  function fetchSup() {
+    return call("/ranked/supreme").then(function (d) {
+      supD = d; d.at = Date.now() - 0; d.off = d.now - Date.now();
+      if (d.unlocked) { st.sup = d.level; save(); paintHud(); }
+      if (panel) { paintMode(); if (mode === "sup") paintSup(); }
+      if (d.phase === "arena" && d.cycle && d.cycle.end + d.off - Date.now() < 0) setTimeout(fetchSup, 2500);
+    }).catch(function () {});
+  }
+  function supNow() { return Date.now() + (supD ? supD.off : 0); }
+  function paintMode() {
+    var bar = panel.querySelector("#rk-mode"); if (!bar) return;
+    var un = st.sup != null || (supD && supD.unlocked);
+    bar.hidden = !un;
+    if (!un && mode === "sup") setMode("season");
+    if (un) { var b = bar.querySelector('[data-m="sup"]'); b.style.setProperty("--c", SUP[Math.max(0, st.sup || 0)].c); }
+  }
+  function setMode(m) {
+    mode = m; if (!panel) return;
+    panel.classList.toggle("sup-mode", m === "sup");
+    Array.prototype.forEach.call(panel.querySelectorAll(".rk-m"), function (b) { b.classList.toggle("on", b.dataset.m === m); });
+    if (m === "sup") { paintSup(); fetchSup(); } else { paintTimer(); requestAnimationFrame(function () { scrollTo(cur, false); }); }
+    paintTimer();
+  }
+  function supLadder(lv) {
+    return '<div class="sp-ladder">' + SUP.map(function (L, i) {
+      return '<span class="sp-step' + (i < lv ? " done" : i === lv ? " cur" : "") + (L.rb ? " rb" : "") + '" style="--c:' + L.c + '"><i><b>' + (i === 0 ? "S" : i <= 5 ? "S" + i : L.n.split(" ")[0].charAt(0) + (i === 10 ? "★" : "")) + "</b></i><small>" + esc(L.n) + "</small></span>";
+    }).join("") + "</div>";
+  }
+  function paintSup() {
+    var box = panel.querySelector("#rk-sup"); if (!box) return;
+    var d = supD;
+    if (!d || !d.unlocked) { box.innerHTML = '<p class="sp-empty">Chargement de ta ligue suprême…</p>'; return; }
+    var lv = d.level, L = SUP[lv], h = "";
+    box.style.setProperty("--c", L.c);
+    h += '<div class="sp-hero' + (L.rb ? " rb" : "") + ' lv' + lv + '">' + '<div class="sp-emb">' + emblem(10, L.c, 118, !!L.rb) + '</div><div class="sp-hi"><small>Ma ligue suprême</small><b class="rk-neon">' + esc(L.n) + "</b>" +
+      '<span>' + (d.next ? "Prochaine ligue : <strong>" + esc(d.next) + "</strong>" : "Sommet atteint : tu es la <strong>Suprématie</strong> !") + "</span></div></div>";
+    if (d.result && d.result.at > supSeen) {
+      var R = d.result, to = SUP[R.to] || L;
+      h += '<div class="sp-res ' + (R.won ? "win" : "lose") + '" style="--c:' + to.c + '"><b>' + (R.won ? "PROMOTION → " + esc(to.n) : (R.to < R.from ? "DESCENTE → " + esc(to.n) : "Tu restes en " + esc(to.n))) + "</b><small>" +
+        (R.grind ? "1000 kills atteints !" : (R.won ? "Tu as fini 1er de l'arène avec " + R.kills + " kills (meilleur bot : " + R.best + ")." : "Tu n'as pas fini 1er (" + R.kills + " kills contre " + R.best + " pour le meilleur bot).")) + '</small><button class="sp-ok">OK</button></div>';
+    }
+    h += supLadder(lv);
+    if (d.phase === "arena") {
+      var left = d.cycle.end + d.off - Date.now();
+      h += '<section class="sp-arena"><div class="sp-ah"><div><small>Arène vers</small><b>' + esc(d.next) + '</b></div><div class="sp-cd"><small>Fin de l\'arène</small><b id="sp-cd">' + fmtHms(left) + "</b></div></div>" +
+        '<p class="sp-rule">Finis <strong>1er sur 10</strong> (toi + 9 bots) à la fin des 2 h pour monter. Sinon tu perds une ligue. Les bots font jusqu\'à <strong>' + d.botRate + " kills/min</strong>.</p>" +
+        '<div class="sp-status ' + (d.lead ? "ok" : "no") + '">' + (d.lead ? "👑 Tu es 1er ! Garde l'avance." : "Il te manque <b>" + d.missing + "</b> kill" + (d.missing > 1 ? "s" : "") + " pour passer 1er") + "</div>" +
+        '<ol class="sp-board">' + d.board.map(function (b) {
+          var pct = d.board[0].kills ? Math.max(3, b.kills / Math.max(1, d.board[0].kills) * 100) : 3;
+          return '<li class="' + (b.me ? "me" : "") + (b.rank === 1 ? " first" : "") + '"><span class="sp-r">' + (b.rank === 1 ? "👑" : b.rank) + '</span><span class="sp-n">' + (b.bot ? "🤖 " : "") + esc(b.name) + (b.me ? " (toi)" : "") + '</span><span class="sp-bar"><i style="width:' + pct + '%"></i></span><span class="sp-k">' + b.kills + "</span></li>";
+        }).join("") + "</ol></section>";
+    } else if (d.phase === "grind") {
+      var p = Math.min(100, d.levelKills / d.goal * 100);
+      h += '<section class="sp-arena"><div class="sp-ah"><div><small>Objectif</small><b>' + esc(d.next) + '</b></div><div class="sp-cd"><small>Kills</small><b>' + d.levelKills + " / " + d.goal + "</b></div></div>" +
+        '<p class="sp-rule">À partir de Suprême 5, il faut <strong>1000 kills</strong> pour grimper à chaque ligue.</p><div class="rk-bar sp-gbar"><i style="width:' + p + '%"></i></div><span class="rk-next">Encore <b>' + (d.goal - d.levelKills) + "</b> kills pour " + esc(d.next) + "</span></section>";
+    } else {
+      h += '<section class="sp-arena"><p class="sp-rule sp-max">🏆 Tu as atteint la ligue maximale. Respect, Suprématie !</p></section>';
+    }
+    box.innerHTML = h;
+    var ok = box.querySelector(".sp-ok"); if (ok) ok.addEventListener("click", function () { supSeen = d.result.at; save(); paintSup(); });
+    var pl = panel.querySelector(".rk-play"); if (pl) pl.style.setProperty("--c", L.c);
+  }
+  function fmtHms(ms) { if (ms < 0) ms = 0; var s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + "h " : "") + String(m).padStart(2, "0") + "m " + String(x).padStart(2, "0") + "s"; }
+  function tickSup() {
+    if (mode !== "sup" || !supD || !panel) return;
+    var e = panel.querySelector("#sp-cd"), cd = panel.querySelector("#rk-cd");
+    if (supD.phase === "arena") { var left = supD.cycle.end + supD.off - Date.now(); if (e) e.textContent = fmtHms(left); if (cd) cd.textContent = fmtHms(left); if (left <= 0 && !supD._rf) { supD._rf = 1; setTimeout(fetchSup, 1500); } }
+  }
+
   /* ----- panneau ----- */
   function fmtCd(ms) {
     if (ms <= 0) return "Nouvelle saison !";
@@ -118,6 +193,9 @@
     return d + "j " + String(h).padStart(2, "0") + "h " + String(m).padStart(2, "0") + "m " + String(x).padStart(2, "0") + "s";
   }
   function paintTimer() {
+    var lb = panel.querySelector(".rk-timer small");
+    if (mode === "sup") { if (lb) lb.textContent = supD && supD.phase === "arena" ? "Fin de l'arène" : "Ligue suprême"; if (supD && supD.phase !== "arena") { var c2 = panel.querySelector("#rk-cd"); if (c2) c2.textContent = supD.phase === "max" ? "MAX" : "1000 kills"; } tickSup(); return; }
+    if (lb) lb.textContent = "Reset dans";
     var cd = panel.querySelector("#rk-cd"), se = panel.querySelector("#rk-season");
     if (cd) cd.textContent = st.endsAt ? fmtCd(st.endsAt - now()) : "—";
     if (se) se.textContent = "Saison " + st.season;
@@ -187,12 +265,14 @@
     panel = document.createElement("div"); panel.id = "rk-panel"; panel.className = "rk";
     panel.innerHTML = '<div class="rk-bg"></div><div class="rk-sheet" role="dialog" aria-label="Classé">' +
       '<header class="rk-head"><div><h2>CLASSÉ</h2><span id="rk-season" class="rk-season"></span></div><div class="rk-timer"><small>Reset dans</small><b id="rk-cd"></b></div><button class="rk-x" aria-label="Fermer">×</button></header>' +
+      '<nav id="rk-mode" class="rk-modes" hidden><button class="rk-m on" data-m="season">Saison</button><button class="rk-m" data-m="sup">★ Ma ligue suprême</button></nav><section id="rk-sup" class="rk-sup"></section>' +
       '<section id="rk-me" class="rk-me"></section>' +
       '<section class="rk-car"><div class="rk-cap"><b id="rk-lgname" class="rk-neon"></b><small>Fais défiler de droite à gauche</small></div>' +
       '<button class="rk-arr l" aria-label="Ligue précédente">‹</button><div class="rk-track" tabindex="0"></div><button class="rk-arr r" aria-label="Ligue suivante">›</button><div class="rk-dots"></div></section>' +
       '<button class="rk-play"><span>JOUER</span><small>Partie classée · Frappe Dolling</small></button>' +
       '<section class="rk-pl"><div class="rk-pl-h"><div class="rk-tabs"><button class="rk-tab on" data-t="league">Cette ligue</button><button class="rk-tab" data-t="all">Tous</button></div><small id="rk-lgcount"></small></div><div id="rk-list" class="rk-list"></div></section></div>';
     document.body.appendChild(panel);
+    panel.querySelectorAll(".rk-m").forEach(function (b) { b.addEventListener("click", function () { setMode(b.dataset.m); }); });
     var track = panel.querySelector(".rk-track"), raf = 0;
     track.addEventListener("scroll", function () { cancelAnimationFrame(raf); raf = requestAnimationFrame(onScroll); }, { passive: true });
     panel.querySelector(".rk-arr.l").addEventListener("click", function () { scrollTo(cur - 1, true); });
@@ -221,18 +301,19 @@
     paintMe(); paintCards(); paintTimer(); paintDots(); paintPlayers();
     panel.classList.add("open"); document.body.classList.add("rk-lock");
     cur = leagueIdx(st.elims); requestAnimationFrame(function () { scrollTo(cur, false); onScroll(); paintDots(); paintPlayers(); });
-    fetchMe(); fetchTop();
+    mode = "season"; panel.classList.remove("sup-mode"); Array.prototype.forEach.call(panel.querySelectorAll(".rk-m"), function (b) { b.classList.toggle("on", b.dataset.m === "season"); }); paintMode();
+    fetchMe(); fetchTop(); fetchSup();
     clearInterval(cdTimer); cdTimer = setInterval(paintTimer, 1000);
-    clearInterval(topTimer); topTimer = setInterval(function () { fetchTop(); fetchMe(); }, 30000);
+    clearInterval(topTimer); topTimer = setInterval(function () { fetchTop(); fetchMe(); if (mode === "sup" || st.sup != null) fetchSup(); }, st.sup != null ? 15000 : 30000);
   }
   function closePanel() { if (!panel) return; panel.classList.remove("open"); document.body.classList.remove("rk-lock"); clearInterval(cdTimer); clearInterval(topTimer); }
 
   /* ----- bouton CLASSE du lobby ----- */
   function paintHud() {
     var b = document.getElementById("btn-ranked"); if (!b) return;
-    var i = leagueIdx(st.elims), L = LEAGUES[i];
+    var i = leagueIdx(st.elims), L = LEAGUES[i], sp = st.sup != null ? SUP[st.sup] : null; if (sp) { L = { n: sp.n, c: sp.c }; i = 10; }
     b.classList.add("rk-hud"); b.style.setProperty("--c", L.c); b.style.setProperty("--lv", i);
-    var sig = i + ":" + st.elims; if (b._sig === sig) return; b._sig = sig;
+    var sig = i + ":" + st.elims + ":" + st.sup; if (b._sig === sig) return; b._sig = sig;
     b.innerHTML = '<span class="rk-hud-ic">🏆</span><span class="rk-hud-t"><b>CLASSÉ</b><small>' + esc(L.n) + " · " + st.elims + " élim.</small></span>";
   }
   // Un vrai clic (ou celui du Center) ouvre le panneau ; seul le bouton JOUER du panneau et le lancement d'equipe lancent la partie.
