@@ -72,3 +72,33 @@
 @media (max-width:380px){.ew-wheel.small .ew-it .nm{max-width:56%}.ew-wheel.small .ew-it{font-size:.8rem}}
 @media (prefers-reduced-motion:reduce){.ew-wheel.spin .ew-frame::after{animation:none}}
 .ew-it .tk:empty{display:none}
+
+/* ===== animations v2 ===== */
+.ew-land .ew-frame{animation:ewGlow .65s ease-out}
+.ew-land .ew-it.center .ic{animation:ewPopIc .6s cubic-bezier(.2,1.6,.4,1)}
+@keyframes ewGlow{0%{box-shadow:0 0 0 0 var(--land,#fff)}35%{box-shadow:0 0 28px 6px var(--land,#fff),inset 0 0 22px var(--land,#fff)}100%{box-shadow:0 0 0 0 transparent}}
+@keyframes ewPopIc{0%{transform:scale(.6) rotate(-14deg)}60%{transform:scale(1.35) rotate(8deg)}100%{transform:none}}
+.ew-root{position:relative}
+.ew-conf{position:absolute;left:50%;top:38%;width:0;height:0;pointer-events:none;z-index:6}
+.ew-conf i{position:absolute;width:7px;height:11px;border-radius:2px;opacity:0;animation:ewConf 1.1s cubic-bezier(.15,.8,.3,1) forwards}
+@keyframes ewConf{0%{opacity:1;transform:translate(0,0) rotate(0)}100%{opacity:0;transform:translate(var(--x),calc(var(--y) + 90px)) rotate(var(--r))}}
+.ew-draw:not(:disabled){animation:ewDrawPulse 2.2s ease-in-out infinite}
+@keyframes ewDrawPulse{50%{box-shadow:0 0 22px rgba(255,200,60,.75)}}
+.ability-btn{--efx:#45d6c4;transition:transform .15s,filter .3s}
+.ability-btn:not(.used){box-shadow:0 0 0 1px color-mix(in srgb,var(--efx) 70%,transparent),0 0 14px color-mix(in srgb,var(--efx) 55%,transparent);animation:ewReady 2.4s ease-in-out infinite}
+.ability-btn:not(.used):active{transform:scale(.9)}
+.ability-btn.used{filter:grayscale(.85) brightness(.6)}
+@keyframes ewReady{50%{box-shadow:0 0 0 1px var(--efx),0 0 26px var(--efx)}}
+.ew-fx{position:fixed;inset:0;z-index:9999;pointer-events:none;overflow:hidden}
+.ew-fx-vig{position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,transparent 38%,color-mix(in srgb,var(--c) 55%,transparent) 100%);animation:ewVig 1s ease-out forwards}
+@keyframes ewVig{0%{opacity:0}18%{opacity:1}100%{opacity:0}}
+.ew-fx-big{position:absolute;left:50%;top:34%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:.2rem;animation:ewBig 1.1s cubic-bezier(.2,1.4,.4,1) forwards}
+.ew-fx-big span{font-size:4.2rem;filter:drop-shadow(0 0 18px var(--c)) drop-shadow(0 0 6px #fff)}
+.ew-fx-big b{font:800 1.5rem/1 var(--font-display,Rajdhani,sans-serif);letter-spacing:.22em;text-transform:uppercase;color:#fff;text-shadow:0 0 6px var(--c),0 0 18px var(--c),0 0 34px var(--c)}
+@keyframes ewBig{0%{transform:translate(-50%,-50%) scale(.2);opacity:0}25%{transform:translate(-50%,-50%) scale(1.15);opacity:1}70%{transform:translate(-50%,-58%) scale(1);opacity:1}100%{transform:translate(-50%,-80%) scale(.9);opacity:0}}
+.ew-fx-ring{position:absolute;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;border:3px solid var(--c);box-shadow:0 0 14px var(--c),inset 0 0 10px var(--c);animation:ewRing .8s ease-out forwards}
+.ew-fx-ring.r2{animation-delay:.14s;border-width:2px}
+@keyframes ewRing{to{transform:scale(14);opacity:0}}
+.ew-fx-p{position:absolute;width:6px;height:6px;margin:-3px;border-radius:50%;background:var(--c);box-shadow:0 0 8px var(--c);animation:ewP .8s ease-out forwards}
+@keyframes ewP{to{transform:translate(var(--x),var(--y)) scale(.2);opacity:0}}
+@media (prefers-reduced-motion:reduce){.ability-btn:not(.used),.ew-draw:not(:disabled){animation:none}.ew-fx-ring,.ew-fx-p{display:none}}

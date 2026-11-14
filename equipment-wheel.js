@@ -11,7 +11,8 @@
     { id: "mortar", name: "Mortier de lion", icon: "🦁", color: "#ffb648", desc: "1 321 PV. Tire toutes les 5 s sur un membre au hasard (456 dégâts)." },
     { id: "dancing", name: "Dancing", icon: "💗", color: "#ff6fb5", desc: "Rond lumineux qui change de joueur pendant 19 secondes." },
     { id: "nightark", name: "Nightark", icon: "🌙", color: "#9d8cff", desc: "12 squelettes chassent les joueurs pendant 20 secondes." },
-    { id: "bluwer", name: "Bluwer", icon: "🔵", color: "#4d8dff", desc: "10 001 PV, 1 000 dégâts et vitesse ×2 pendant 31 secondes." }
+    { id: "bluwer", name: "Bluwer", icon: "🔵", color: "#4d8dff", desc: "10 001 PV, 1 000 dégâts et vitesse ×2 pendant 31 secondes." },
+    { id: "animo", name: "Animo", icon: "🐆", color: "#ff7a2b", desc: "Dash éclair sur 5 joueurs : ils sont tués instantanément." }
   ];
   var N = ITEMS.length, DEFAULT_SEL = ["ice", "fog", "heal"];
   var STEP = 0.62; // angle (rad) entre deux equipements sur le tambour
@@ -126,7 +127,7 @@
     var self = this;
     target = Math.round(target);
     var steps = Math.abs(target - this.p);
-    this.animateTo(target, dur || Math.min(900, 260 + steps * 90), function (t) { return 1 - Math.pow(1 - t, 3); }, function () { settle(self); tick(true); });
+    this.animateTo(target, dur || Math.min(900, 260 + steps * 90), function (t) { return 1 - Math.pow(1 - t, 3); }, function () { settle(self); tick(true); land(self); });
   };
   Wheel.prototype.bind = function () {
     var self = this, win = this.win, drag = null, wheelAcc = 0, wheelT = 0;
@@ -199,8 +200,8 @@
       var target = nearestIdx(w.p, sel[n]) + N * (2 + n);           // plusieurs tours complets
       var dur = 1800 + n * 650;
       w.animateTo(target, dur, function (t) { return 1 - Math.pow(1 - t, 4); }, function () {
-        tick(true); spinning--;
-        if (spinning === 0) { btn.disabled = false; save(); }
+        tick(true); land(w); spinning--;
+        if (spinning === 0) { btn.disabled = false; save(); confetti(); }
       });
     });
   }
@@ -234,6 +235,65 @@
     wheels.forEach(function (w, n) { w.stop(); w.setP(nearestIdx(w.p, sel[n])); });
     refreshAll();
   }
+
+  /* ----- animations ----- */
+  function colorOf(id) { return ITEMS[idxOf(id)].color; }
+  function land(w) {
+    w.node.style.setProperty("--land", colorOf(sel[w.slot]));
+    w.node.classList.remove("ew-land"); void w.node.offsetWidth; w.node.classList.add("ew-land");
+    setTimeout(function () { w.node.classList.remove("ew-land"); }, 700);
+  }
+  function confetti() {
+    if (!root) return;
+    var box = el("div", "ew-conf"); root.appendChild(box);
+    var cols = sel.map(colorOf).concat(["#fff", "#ffd34d"]);
+    for (var i = 0; i < 46; i++) {
+      var p = el("i"), a = Math.random() * Math.PI * 2, d = 60 + Math.random() * 150;
+      p.style.cssText = "--x:" + (Math.cos(a) * d).toFixed(0) + "px;--y:" + (Math.sin(a) * d - 40).toFixed(0) + "px;--r:" + Math.floor(Math.random() * 720 - 360) + "deg;background:" + cols[i % cols.length] + ";animation-delay:" + (Math.random() * 120).toFixed(0) + "ms";
+      box.appendChild(p);
+    }
+    setTimeout(function () { if (box.parentNode) box.parentNode.removeChild(box); }, 1400);
+  }
+  /* en partie : explosion coloree a chaque utilisation d'un equipement + boutons qui brillent */
+  function gameFx() {
+    var bar = document.getElementById("equipment-actions");
+    if (!bar) return false;
+    function paintBtns() {
+      Array.prototype.forEach.call(bar.querySelectorAll(".ability-btn"), function (b) {
+        var id = b.id.replace("ability-", ""), it = ITEMS[idxOf(id)];
+        if (it && it.id === id) b.style.setProperty("--efx", it.color);
+      });
+    }
+    function burst(btn) {
+      var id = btn.id.replace("ability-", ""), it = ITEMS[idxOf(id)]; if (!it || it.id !== id) return;
+      var r = btn.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      var fx = el("div", "ew-fx"); fx.style.setProperty("--c", it.color);
+      var html = '<div class="ew-fx-vig"></div><div class="ew-fx-big"><span>' + it.icon + "</span><b>" + esc(it.name) + "</b></div>" +
+        '<div class="ew-fx-ring" style="left:' + cx + "px;top:" + cy + 'px"></div><div class="ew-fx-ring r2" style="left:' + cx + "px;top:" + cy + 'px"></div>';
+      for (var i = 0; i < 18; i++) {
+        var a = Math.random() * Math.PI * 2, d = 50 + Math.random() * 110;
+        html += '<i class="ew-fx-p" style="left:' + cx + "px;top:" + cy + "px;--x:" + (Math.cos(a) * d).toFixed(0) + "px;--y:" + (Math.sin(a) * d).toFixed(0) + 'px"></i>';
+      }
+      fx.innerHTML = html; document.body.appendChild(fx);
+      try { if (navigator.vibrate) navigator.vibrate(id === "animo" ? [30, 20, 30, 20, 60] : 25); } catch (e) {}
+      setTimeout(function () { if (fx.parentNode) fx.parentNode.removeChild(fx); }, 1300);
+    }
+    var seen = new WeakMap();
+    new MutationObserver(function (muts) {
+      paintBtns();
+      muts.forEach(function (m) {
+        if (m.type !== "attributes") return;
+        var b = m.target; if (!b.classList || !b.classList.contains("ability-btn")) return;
+        var u = b.classList.contains("used");
+        if (u && !seen.get(b)) burst(b);
+        seen.set(b, u);
+      });
+    }).observe(bar, { attributes: true, attributeFilter: ["class"], subtree: true, childList: true });
+    paintBtns();
+    return true;
+  }
+  if (!gameFx()) { document.addEventListener("DOMContentLoaded", gameFx); setTimeout(gameFx, 1200); }
+
   if (!build()) {
     document.addEventListener("DOMContentLoaded", build);
     setTimeout(build, 800);
