@@ -1,0 +1,22 @@
+/* Compte à rebours de recherche de joueurs */
+#screen-matchmaking .mm-spinner{display:none}
+.cd-ring{position:relative;width:220px;height:220px;margin:0 auto 1.2rem;display:grid;place-items:center}
+.cd-ring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);overflow:visible}
+.cd-ring circle{fill:none}
+.cd-bg{stroke:rgba(255,255,255,.08);stroke-width:8}
+.cd-ticks{stroke:rgba(255,200,120,.35);stroke-width:5;stroke-dasharray:2 13.1;animation:cdSpin 24s linear infinite;transform-origin:100px 100px}
+.cd-fg{stroke:url(#cdg);stroke-width:8;stroke-linecap:round;filter:drop-shadow(0 0 8px rgba(255,150,70,.9));transition:stroke-dashoffset .95s linear}
+.cd-radar{position:absolute;inset:16px;border-radius:50%;background:conic-gradient(from 0deg,rgba(255,182,72,.0) 0deg,rgba(255,182,72,.28) 75deg,rgba(255,182,72,0) 76deg);animation:cdSpin 2.4s linear infinite;-webkit-mask:radial-gradient(circle,transparent 58%,#000 59%);mask:radial-gradient(circle,transparent 58%,#000 59%)}
+.cd-num{position:relative;z-index:2}
+.cd-num .mm-timer,.cd-num #mm-timer{margin:0;font:800 5.2rem/1 var(--font-display,Rajdhani,sans-serif);color:#fff;text-shadow:0 0 12px #ffb648,0 0 30px rgba(255,150,70,.8)}
+.cd-num.tick{animation:cdTick .6s cubic-bezier(.2,1.5,.4,1)}
+.cd-ring.hot .cd-fg{stroke:#ff3b3b;filter:drop-shadow(0 0 10px #ff3b3b)}
+.cd-ring.hot .cd-num #mm-timer{color:#ffb3b3;text-shadow:0 0 14px #ff3b3b,0 0 34px #ff3b3b}
+.cd-ring.hot{animation:cdShake .5s ease-in-out infinite}
+.cd-ring.done .cd-radar{animation-duration:.8s}
+#screen-matchmaking #mm-status{animation:cdDots 1.6s ease-in-out infinite}
+@keyframes cdSpin{to{transform:rotate(360deg)}}
+@keyframes cdTick{0%{transform:scale(1.35);opacity:.4}100%{transform:scale(1);opacity:1}}
+@keyframes cdShake{25%{transform:translateX(-1.5px)}75%{transform:translateX(1.5px)}}
+@keyframes cdDots{50%{opacity:.55}}
+@media (prefers-reduced-motion:reduce){.cd-ticks,.cd-radar,.cd-ring.hot,#screen-matchmaking #mm-status{animation:none}}
