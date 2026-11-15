@@ -91,7 +91,7 @@
       var team = null;
       function buildRoster() {
         var base = [];
-        fighters.forEach(function (f) { if (f.isPlayer) base.push({ kind: "me", name: f.name, card: state.card, sub: "NIV. " + (M.level ? M.level() : 1) }); });
+        fighters.forEach(function (f) { if (f.isPlayer) base.push({ kind: "me", name: f.name, card: state.card, sub: "CHAP. " + (M.level ? M.level() : 1) }); });
         var allies = [];
         if (team) team.forEach(function (m) { if (!m.me) allies.push({ kind: "ally", name: m.username, card: cardCache[m.id] || null, sub: "Allié" }); });
         var bots = fighters.filter(function (f) { return f.isBot; }).map(function (f) { return { kind: "bot", name: f.name, sub: "Robot" }; });
