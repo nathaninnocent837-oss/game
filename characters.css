@@ -1,0 +1,128 @@
+/* TRUGO — Personnages (Sergio / Barbara) */
+
+/* ---------- bouton en bas du panneau Personnage ---------- */
+#chars-open-btn{
+  --tc:#4aa8ff; --rgb:74,168,255;
+  width:100%; margin-top:1.1rem; padding:.85rem 1rem; display:flex; align-items:center; gap:.8rem; cursor:pointer; text-align:left;
+  color:var(--text,#fff); border-radius:16px; border:1px solid rgba(var(--rgb),.55);
+  background:linear-gradient(120deg, rgba(var(--rgb),.22), rgba(255,255,255,.04) 60%);
+  box-shadow:0 0 22px rgba(var(--rgb),.25), inset 0 1px 0 rgba(255,255,255,.08);
+  transition:transform .15s, box-shadow .2s;
+}
+#chars-open-btn:active{ transform:scale(.98); }
+#chars-open-btn .co-ic{ font-size:1.6rem; filter:drop-shadow(0 0 8px rgba(var(--rgb),.9)); }
+#chars-open-btn .co-tx{ flex:1; }
+#chars-open-btn .co-tx b{ display:block; font-family:var(--font-display); font-size:1.05rem; letter-spacing:.06em; text-transform:uppercase; }
+#chars-open-btn .co-tx small{ display:block; font-size:.72rem; color:var(--text-dim,#9aa7b5); margin-top:.1rem; }
+#chars-open-btn .co-ar{ font-size:1.8rem; color:var(--tc); line-height:1; }
+
+/* ---------- grande fenêtre ---------- */
+#chars-win{
+  --tc:#4aa8ff; --rgb:74,168,255;
+  position:fixed; inset:0; z-index:40; display:none; flex-direction:column;
+  background:linear-gradient(180deg, rgba(6,9,13,.55) 0%, rgba(6,9,13,0) 22%, rgba(6,9,13,0) 42%, rgba(6,9,13,.9) 62%);
+  color:var(--text,#fff);
+}
+#chars-win.open{ display:flex; animation:cwIn .35s ease; }
+@keyframes cwIn{ from{ opacity:0; } to{ opacity:1; } }
+#chars-win .cw-top{ display:flex; align-items:center; gap:.7rem; padding:calc(.8rem + env(safe-area-inset-top,0px)) 1rem .4rem; }
+#chars-win .cw-x{ width:2.4rem; height:2.4rem; border-radius:50%; font-size:1.5rem; line-height:1; cursor:pointer; color:#fff;
+  background:rgba(255,255,255,.09); border:1px solid rgba(255,255,255,.16); backdrop-filter:blur(6px); }
+#chars-win .cw-ttl{ flex:1; }
+#chars-win .cw-ttl small{ display:block; font-size:.62rem; letter-spacing:.3em; color:var(--tc); }
+#chars-win .cw-ttl b{ font-family:var(--font-display); font-size:1.3rem; letter-spacing:.05em; text-transform:uppercase; }
+#chars-win .cw-coins{ display:flex; align-items:center; gap:.35rem; padding:.35rem .8rem; border-radius:99px; font-family:var(--font-display); font-size:1rem;
+  background:rgba(255,200,70,.12); border:1px solid rgba(255,200,70,.45); box-shadow:0 0 14px rgba(255,200,70,.2); }
+#chars-win .cw-coins b{ color:#ffd166; letter-spacing:.03em; }
+
+#chars-win .cw-stage{ position:relative; flex:1; min-height:0; display:flex; align-items:flex-start; justify-content:space-between; padding:.5rem .6rem 0; pointer-events:none; }
+#chars-win .cw-stage > *{ pointer-events:auto; }
+#chars-win .cw-name{ position:absolute; left:0; right:0; top:.2rem; text-align:center; pointer-events:none; }
+#chars-win .cw-name small{ display:block; font-size:.66rem; letter-spacing:.28em; color:var(--text-dim,#9aa7b5); }
+#chars-win .cw-name h2{ font-family:var(--font-display); font-size:2.3rem; line-height:1.05; letter-spacing:.08em; color:var(--tc); text-shadow:0 0 22px rgba(var(--rgb),.85); }
+#chars-win .cw-arr{ align-self:center; width:2.6rem; height:3.4rem; font-size:2.2rem; line-height:1; cursor:pointer; color:var(--tc); z-index:2;
+  background:rgba(255,255,255,.06); border:1px solid rgba(var(--rgb),.4); border-radius:14px; backdrop-filter:blur(6px); }
+#chars-win .cw-hint{ position:absolute; left:0; right:0; bottom:1.2rem; text-align:center; font-size:.72rem; letter-spacing:.14em; color:var(--text-dim,#9aa7b5); text-transform:uppercase; animation:cwHint 2.4s ease-in-out infinite; pointer-events:none; }
+@keyframes cwHint{ 0%,100%{ opacity:.45; transform:translateX(0); } 50%{ opacity:1; transform:translateX(3px); } }
+#chars-win .cw-dots{ position:absolute; left:0; right:0; bottom:.4rem; display:flex; justify-content:center; gap:.45rem; pointer-events:none; }
+#chars-win .cw-dots i{ width:.5rem; height:.5rem; border-radius:99px; background:rgba(255,255,255,.25); transition:all .25s; }
+#chars-win .cw-dots i.on{ width:1.5rem; background:var(--tc); box-shadow:0 0 10px var(--tc); }
+
+#chars-win .cw-deck{
+  display:flex; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; scrollbar-width:none;
+  height:min(58vh, 520px); flex:0 0 auto; position:relative;
+  background:linear-gradient(180deg, rgba(19,26,35,.95), rgba(10,14,20,.99));
+  border-top:1px solid rgba(var(--rgb),.5); border-radius:26px 26px 0 0; box-shadow:0 -10px 50px rgba(var(--rgb),.25);
+}
+#chars-win .cw-deck::-webkit-scrollbar{ display:none; }
+#chars-win .cw-card{
+  flex:0 0 100%; width:100%; scroll-snap-align:center; scroll-snap-stop:always; overflow-y:auto; overflow-x:hidden;
+  padding:1.1rem max(1.2rem, calc(50% - 270px)) calc(1.2rem + env(safe-area-inset-bottom,0px)); box-sizing:border-box;
+}
+#chars-win .cw-tags{ display:flex; flex-wrap:wrap; gap:.4rem; }
+#chars-win .cw-tag{ font-size:.66rem; letter-spacing:.1em; text-transform:uppercase; padding:.22rem .6rem; border-radius:99px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14); color:var(--text-dim,#9aa7b5); }
+#chars-win .cw-tag.main{ color:var(--tc); border-color:rgba(var(--rgb),.6); background:rgba(var(--rgb),.14); }
+#chars-win .cw-cname{ font-family:var(--font-display); font-size:2rem; letter-spacing:.07em; margin:.5rem 0 .2rem; color:var(--tc); text-shadow:0 0 18px rgba(var(--rgb),.7); }
+#chars-win .cw-desc{ font-size:.82rem; line-height:1.45; color:var(--text-dim,#9aa7b5); margin:0 0 .7rem; }
+#chars-win .cw-lvl{ display:flex; align-items:center; justify-content:space-between; gap:.8rem; font-size:.78rem; color:var(--text-dim,#9aa7b5); margin-bottom:.4rem; }
+#chars-win .cw-lvl b{ color:#fff; font-family:var(--font-display); font-size:1rem; }
+#chars-win .cw-pips{ display:flex; gap:.22rem; flex:1; max-width:60%; }
+#chars-win .cw-pips i{ flex:1; height:.5rem; border-radius:3px; background:rgba(255,255,255,.1); }
+#chars-win .cw-pips i.on{ background:linear-gradient(90deg,var(--tc),#fff); box-shadow:0 0 8px var(--tc); }
+#chars-win .cw-stat{ margin:.5rem 0; }
+#chars-win .cw-sl{ display:flex; justify-content:space-between; font-size:.78rem; color:var(--text-dim,#9aa7b5); margin-bottom:.25rem; }
+#chars-win .cw-sl b{ color:#fff; font-family:var(--font-display); font-size:1rem; }
+#chars-win .cw-sl em{ font-style:normal; color:#59e08a; font-size:.72rem; margin-left:.35rem; }
+#chars-win .cw-bar{ height:.6rem; border-radius:99px; background:rgba(255,255,255,.08); overflow:hidden; }
+#chars-win .cw-bar span{ display:block; height:100%; border-radius:99px; transition:width .6s cubic-bezier(.2,.9,.3,1); }
+#chars-win .cw-bar.hp span{ background:linear-gradient(90deg,#2fb86b,#7dffb0); box-shadow:0 0 10px #4dffa0; }
+#chars-win .cw-bar.dm span{ background:linear-gradient(90deg,#ff5c68,#ffb648); box-shadow:0 0 10px #ff8a50; }
+#chars-win .cw-up{
+  width:100%; margin-top:.8rem; padding:.9rem; border:none; cursor:pointer; border-radius:16px; color:#10151b;
+  font-family:var(--font-display); font-size:1.1rem; font-weight:800; letter-spacing:.07em;
+  background:linear-gradient(110deg,#ffd166,#fff 45%,#ffd166); background-size:220% 100%; animation:cwBtn 2.2s linear infinite;
+  box-shadow:0 6px 24px rgba(255,200,70,.45);
+}
+@keyframes cwBtn{ from{ background-position:220% 0; } to{ background-position:-220% 0; } }
+#chars-win .cw-up:active{ transform:scale(.98); }
+#chars-win .cw-up:disabled{ animation:none; background:rgba(255,255,255,.08); color:var(--text-dim,#9aa7b5); box-shadow:none; cursor:not-allowed; }
+#chars-win .cw-miss{ text-align:center; font-size:.76rem; color:var(--text-dim,#9aa7b5); margin-top:.4rem; }
+#chars-win .cw-miss b{ color:#ffd166; }
+#chars-win .cw-card h3{ font-family:var(--font-display); font-size:.74rem; letter-spacing:.16em; color:var(--text-dim,#9aa7b5); text-transform:uppercase; margin:1rem 0 .45rem; }
+#chars-win .cw-sws{ display:flex; flex-wrap:wrap; gap:.55rem; }
+#chars-win .cw-sw{ width:2.1rem; height:2.1rem; border-radius:50%; background:var(--c); border:2px solid rgba(255,255,255,.2); cursor:pointer; transition:transform .15s, box-shadow .2s; }
+#chars-win .cw-sw.on{ border-color:#fff; transform:scale(1.15); box-shadow:0 0 14px var(--c); }
+#chars-win .cw-pick{
+  width:100%; margin-top:1.1rem; padding:.85rem; cursor:pointer; border-radius:16px; font-family:var(--font-display); font-size:1.05rem; letter-spacing:.1em; font-weight:700; color:#fff;
+  background:rgba(var(--rgb),.22); border:1px solid rgba(var(--rgb),.7); box-shadow:0 0 18px rgba(var(--rgb),.35);
+}
+#chars-win .cw-pick.on{ background:rgba(89,224,138,.16); border-color:rgba(89,224,138,.7); color:#7dffb0; box-shadow:0 0 18px rgba(89,224,138,.3); cursor:default; }
+
+#chars-win .cw-flash{ position:absolute; inset:0; pointer-events:none; opacity:0; background:radial-gradient(circle at 50% 30%, #fff, rgba(var(--rgb),.55) 40%, transparent 70%); }
+#chars-win .cw-flash.go{ animation:cwFlash .9s ease-out; }
+@keyframes cwFlash{ 0%{ opacity:.85; } 100%{ opacity:0; } }
+#chars-win .cw-banner{ position:absolute; left:50%; top:24%; transform:translate(-50%,0); text-align:center; pointer-events:none; font-family:var(--font-display); color:#fff; text-shadow:0 0 24px var(--tc), 0 0 6px #000; animation:cwBan 1.9s ease forwards; }
+#chars-win .cw-banner small{ display:block; letter-spacing:.3em; font-size:.9rem; }
+#chars-win .cw-banner strong{ font-size:3rem; line-height:1; letter-spacing:.07em; color:var(--tc); }
+@keyframes cwBan{ 0%{ opacity:0; transform:translate(-50%,20px) scale(.6); } 20%{ opacity:1; transform:translate(-50%,0) scale(1.12); } 75%{ opacity:1; } 100%{ opacity:0; transform:translate(-50%,-14px); } }
+
+/* ---------- Barbara en match : 2e joystick + viseur ---------- */
+.aim-zone, .aim-cross{ display:none; }
+.barbara-on .aim-zone{
+  display:block; position:absolute; z-index:6; touch-action:none; user-select:none;
+  right:calc(env(safe-area-inset-right,0px) + 120px); bottom:calc(env(safe-area-inset-bottom,0px) + 22px); width:108px; height:108px;
+}
+.aim-base{ position:relative; width:100%; height:100%; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  background:rgba(19,26,35,.6); border:1px solid rgba(255,111,168,.55); box-shadow:0 0 14px rgba(255,111,168,.25); }
+.aim-ring{ position:absolute; inset:22px; border-radius:50%; border:1px dashed rgba(255,111,168,.45); }
+.aim-knob{ width:46px; height:46px; border-radius:50%; background:rgba(255,111,168,.88); box-shadow:0 0 14px rgba(255,111,168,.7); }
+.aim-lbl{ position:absolute; left:0; right:0; top:-1.1rem; text-align:center; font-size:.58rem; letter-spacing:.25em; color:rgba(255,160,200,.9); pointer-events:none; }
+.barbara-on .aim-cross{ display:block; position:absolute; left:50%; top:50%; width:0; height:0; z-index:5; pointer-events:none; }
+.aim-cross i{ position:absolute; background:#fff; box-shadow:0 0 4px #000, 0 0 8px rgba(255,111,168,.9); }
+.aim-cross i:nth-child(1){ width:2px; height:10px; left:-1px; top:-20px; }
+.aim-cross i:nth-child(2){ width:2px; height:10px; left:-1px; top:10px; }
+.aim-cross i:nth-child(3){ height:2px; width:10px; top:-1px; left:-20px; }
+.aim-cross i:nth-child(4){ height:2px; width:10px; top:-1px; left:10px; }
+.aim-cross b{ position:absolute; width:4px; height:4px; left:-2px; top:-2px; border-radius:50%; background:#ff6fa8; box-shadow:0 0 6px #ff6fa8; }
+.attack-btn.gun{ background:#ff6fa8; box-shadow:0 0 16px rgba(255,111,168,.6); }
+.attack-btn.gun svg{ stroke:#2a0508; stroke-width:2; stroke-linecap:round; }
