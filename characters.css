@@ -126,3 +126,31 @@
 .aim-cross b{ position:absolute; width:4px; height:4px; left:-2px; top:-2px; border-radius:50%; background:#ff6fa8; box-shadow:0 0 6px #ff6fa8; }
 .attack-btn.gun{ background:#ff6fa8; box-shadow:0 0 16px rgba(255,111,168,.6); }
 .attack-btn.gun svg{ stroke:#2a0508; stroke-width:2; stroke-linecap:round; }
+
+/* ---------- Plane en match ---------- */
+.plane-hud{ display:none; }
+.plane-on .plane-hud{
+  display:block; position:absolute; left:50%; top:calc(env(safe-area-inset-top,0px) + 64px); transform:translateX(-50%); z-index:6; pointer-events:none;
+  padding:.35rem .9rem; border-radius:99px; font-family:var(--font-display); font-size:.9rem; letter-spacing:.08em; white-space:nowrap; color:#fff;
+  background:rgba(10,16,24,.72); border:1px solid rgba(77,210,255,.7); box-shadow:0 0 16px rgba(77,210,255,.4);
+}
+.plane-on .plane-hud.wait{ border-color:rgba(255,182,72,.8); box-shadow:0 0 16px rgba(255,182,72,.35); color:#ffd9a0; }
+.plane-on .aim-base{ border-color:rgba(77,210,255,.6); box-shadow:0 0 14px rgba(77,210,255,.25); }
+.plane-on .aim-ring{ border-color:rgba(77,210,255,.45); }
+.plane-on .aim-knob{ background:rgba(77,210,255,.9); box-shadow:0 0 14px rgba(77,210,255,.7); }
+.plane-on .aim-lbl{ color:rgba(150,230,255,.95); }
+.plane-on .aim-cross b{ background:#4dd2ff; box-shadow:0 0 6px #4dd2ff; }
+.plane-on .attack-btn.gun{ background:#4dd2ff; box-shadow:0 0 16px rgba(77,210,255,.6); }
+
+/* ---------- Équipement « Archi bombé » ---------- */
+#archi-count{ display:none; position:absolute; left:50%; top:22%; transform:translateX(-50%); z-index:30; pointer-events:none; text-align:center; font-family:var(--font-display); color:#fff; text-shadow:0 0 22px #ff3b3b, 0 0 6px #000; }
+#archi-count.show{ display:block; }
+#archi-count small{ display:block; letter-spacing:.35em; font-size:.95rem; color:#ffb0b0; }
+#archi-count strong{ display:block; font-size:5.5rem; line-height:1; color:#ff4a4a; }
+#archi-count.tick strong{ animation:archiTick 1s ease-out; }
+@keyframes archiTick{ 0%{ transform:scale(1.8); opacity:.3; } 30%{ transform:scale(1); opacity:1; } 100%{ transform:scale(.92); opacity:.85; } }
+body.archi-alert #screen-match::after{ content:''; position:absolute; inset:0; z-index:4; pointer-events:none; box-shadow:inset 0 0 90px rgba(255,40,40,.35); animation:archiPulse 1s ease-in-out infinite; }
+@keyframes archiPulse{ 50%{ box-shadow:inset 0 0 130px rgba(255,40,40,.6); } }
+#archi-flash{ position:fixed; inset:0; z-index:50; pointer-events:none; opacity:0; background:radial-gradient(circle, #fff, #fff 40%, rgba(200,255,170,.8)); }
+#archi-flash.go{ animation:archiFlash 1.4s ease-out; }
+@keyframes archiFlash{ 0%{ opacity:1; } 100%{ opacity:0; } }

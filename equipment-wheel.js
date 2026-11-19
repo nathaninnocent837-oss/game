@@ -12,7 +12,8 @@
     { id: "dancing", name: "Dancing", icon: "💗", color: "#ff6fb5", desc: "Rond lumineux qui change de joueur pendant 19 secondes." },
     { id: "nightark", name: "Nightark", icon: "🌙", color: "#9d8cff", desc: "12 squelettes chassent les joueurs pendant 20 secondes." },
     { id: "bluwer", name: "Bluwer", icon: "🔵", color: "#4d8dff", desc: "10 001 PV, 1 000 dégâts et vitesse ×2 pendant 31 secondes." },
-    { id: "animo", name: "Animo", icon: "🐆", color: "#ff7a2b", desc: "Dash éclair sur 5 joueurs : ils sont tués instantanément." }
+    { id: "animo", name: "Animo", icon: "🐆", color: "#ff7a2b", desc: "Dash éclair sur 5 joueurs : ils sont tués instantanément." },
+    { id: "archi", name: "Archi bombé", icon: "💣", color: "#8fd16a", desc: "Compte à rebours, puis une bombe élimine tout le monde. Brouillard mortel 5 s. Recharge 45 s." }
   ];
   var N = ITEMS.length, DEFAULT_SEL = ["ice", "fog", "heal"];
   var STEP = 0.62; // angle (rad) entre deux equipements sur le tambour

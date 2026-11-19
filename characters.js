@@ -9,7 +9,7 @@
   'use strict';
 
   var UPGRADE_COST = 100000, MAX_LEVEL = 10, BONUS_PER_LEVEL = 0.08, BARBARA_SHOT_K = 0.3;
-  var KINDS = ['sergio', 'barbara'];
+  var KINDS = ['sergio', 'barbara', 'plane'];
   var INFO = {
     sergio: {
       name: 'Sergio', tag: 'Personnage principal', style: 'Épée · Vue 3e personne', tc: '#4aa8ff', rgb: '74,168,255', icon: '⚔️',
@@ -20,11 +20,20 @@
       name: 'Barbara', tag: 'Tireuse d’élite', style: 'Fusil · Vue 1re personne', tc: '#ff6fa8', rgb: '255,111,168', icon: '🔫',
       desc: 'Vue à la première personne, fusil d’assaut et joystick de visée. Touche tes ennemis à distance, les équipements restent utilisables.',
       dmgLabel: 'Dégâts par balle'
+    },
+    plane: {
+      name: 'Plane', tag: 'Robot volant', style: 'Ailes · Vue 1re personne', tc: '#4dd2ff', rgb: '77,210,255', icon: '✈️',
+      desc: 'Robot à ailes, fragile (50 PV). Au sol il marche ; appuie sur attaque pour décoller 30 s et frapper depuis le ciel (78 dégâts). En vol il est intouchable, puis doit attendre 4 s au sol.',
+      dmgLabel: 'Dégâts par tir (en vol)'
     }
   };
   var BARBARA_OUTFITS = ['#ff6fa8', '#b46bff', '#3fa7ff', '#45d6c4', '#ffb648', '#ff5c68'];
   var BARBARA_ACCENTS = ['#ffd166', '#d9dde3', '#45d6c4', '#ff5c68', '#3fa7ff'];
   var BARBARA_DEFAULT = { o: BARBARA_OUTFITS[0], a: BARBARA_ACCENTS[0] };
+  var PLANE_OUTFITS = ['#9aa7b5', '#e8edf2', '#3a4150', '#ff5c68', '#b46bff', '#ffb648'];
+  var PLANE_ACCENTS = ['#4dd2ff', '#7dffb0', '#ff6fb5', '#ffd166', '#ff5c68'];
+  var DEFAULTS = { barbara: BARBARA_DEFAULT, plane: { o: PLANE_OUTFITS[0], a: PLANE_ACCENTS[0] } };
+  var PAL = { barbara: { o: BARBARA_OUTFITS, a: BARBARA_ACCENTS }, plane: { o: PLANE_OUTFITS, a: PLANE_ACCENTS } };
 
   /* ---------- stockage ---------- */
   function user(){ try{ return (typeof APP !== 'undefined' && APP.username) || ''; }catch(e){ return ''; } }
@@ -40,7 +49,7 @@
   function level(k){ return Math.max(0, Math.min(MAX_LEVEL, +load().lv[k] || 0)); }
   function kind(){ return load().sel; }
   function colorsOf(k){
-    if (k === 'barbara'){ var c = load().col.barbara || {}; return { o: c.o || BARBARA_DEFAULT.o, a: c.a || BARBARA_DEFAULT.a }; }
+    if (k !== 'sergio'){ var c = load().col[k] || {}, d = DEFAULTS[k]; return { o: c.o || d.o, a: c.a || d.a }; }
     return { o: APP.outfitColor, a: APP.swordColor };
   }
   function multOf(k){ var l = level(k); return { hp: 1 + BONUS_PER_LEVEL * l, dmg: 1 + BONUS_PER_LEVEL * l }; }
@@ -194,6 +203,7 @@
 
   // pose de tir (appelée à la fin d'animateFighterModel)
   function pose(rig, st, now, m){
+    if (rig.kind === 'plane') return posePlane(rig, st, now, m);
     var ap = (now - (st.attackAnimAt || -1e9)) / 160, k = (ap >= 0 && ap < 1) ? 1 - ap : 0;
     var br = Math.sin(now/1000*2.1 + (st.animSeed || 0)) * .015;
     rig.body.rotation.y = 0;
@@ -221,6 +231,139 @@
     root.userData.flash = g.userData.flash;
     root.traverse(function(o){ o.frustumCulled = false; });
     return root;
+  }
+
+
+  /* ---------- Plane : robot ailé ---------- */
+  function buildFor(k, o, a){ return k === 'plane' ? buildPlane(o, a) : buildBarbara(o, a); }
+
+  function buildPlane(outfitColor, accentColor){
+    var outfitMats = [], darkMats = [], accentMats = [];
+    var outfitC = new THREE.Color(outfitColor);
+    function mk(list, color, extra){ var m = new THREE.MeshStandardMaterial(Object.assign({ color: color, roughness:.4, metalness:.65 }, extra || {})); list.push(m); return m; }
+    var steel = function(e){ return mk(outfitMats, outfitColor, e); };
+    var dark = function(e){ return mk(darkMats, outfitC.clone().multiplyScalar(.5), Object.assign({ roughness:.6, metalness:.5 }, e || {})); };
+    var glow = function(e){ return mk(accentMats, accentColor, Object.assign({ metalness:.3, roughness:.25, emissive:new THREE.Color(accentColor), emissiveIntensity:.7 }, e || {})); };
+    var group = new THREE.Group(), body = new THREE.Group(); group.add(body);
+
+    var torso = new THREE.Mesh(new THREE.BoxGeometry(.56, .72, .36), steel()); torso.position.y = 1.05; body.add(torso);
+    var core = new THREE.Mesh(new THREE.CircleGeometry(.1, 16), glow()); core.position.set(0, 1.12, .185); body.add(core);
+    var plate = new THREE.Mesh(new THREE.BoxGeometry(.5, .2, .06), dark()); plate.position.set(0, .82, .18); body.add(plate);
+    var hips = new THREE.Mesh(new THREE.BoxGeometry(.4, .16, .3), dark()); hips.position.y = .66; body.add(hips);
+    var neck = new THREE.Mesh(new THREE.CylinderGeometry(.07, .08, .1, 8), dark()); neck.position.y = 1.46; body.add(neck);
+
+    var head = new THREE.Group(); head.position.y = 1.52; body.add(head);
+    var skull = new THREE.Mesh(new THREE.BoxGeometry(.44, .36, .4), steel()); skull.position.y = .2; head.add(skull);
+    var visor = new THREE.Mesh(new THREE.BoxGeometry(.36, .1, .04), glow({ emissiveIntensity:1.1 })); visor.position.set(0, .24, .215); head.add(visor);
+    [-1, 1].forEach(function(s){ var ear = new THREE.Mesh(new THREE.CylinderGeometry(.07, .07, .06, 10), dark()); ear.rotation.z = Math.PI/2; ear.position.set(s*.24, .2, 0); head.add(ear); });
+    var ant = new THREE.Mesh(new THREE.CylinderGeometry(.012, .012, .22, 6), dark()); ant.position.set(.12, .46, -.05); head.add(ant);
+    var ball = new THREE.Mesh(new THREE.SphereGeometry(.04, 8, 8), glow()); ball.position.set(.12, .58, -.05); head.add(ball);
+
+    function wing(side){
+      var piv = new THREE.Group(); piv.position.set(side*.2, 1.3, -.2);
+      for (var i = 0; i < 4; i++){
+        var len = .9 - i*.12;
+        var pn = new THREE.Mesh(new THREE.BoxGeometry(len, .025, .2), i % 2 ? glow({ emissiveIntensity:.35 }) : steel());
+        pn.position.set(side*(len/2 + .06), .1 - i*.17, -.02*i);
+        pn.rotation.z = side*(.12 + i*.07);
+        piv.add(pn);
+      }
+      var spar = new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, 1, 6), dark()); spar.rotation.z = Math.PI/2; spar.position.set(side*.5, .15, 0); piv.add(spar);
+      body.add(piv); return piv;
+    }
+    var wingL = wing(-1), wingR = wing(1);
+    var pack = new THREE.Mesh(new THREE.BoxGeometry(.34, .4, .16), dark()); pack.position.set(0, 1.12, -.26); body.add(pack);
+    [-1, 1].forEach(function(s){ var th = new THREE.Mesh(new THREE.ConeGeometry(.07, .2, 8), glow({ emissiveIntensity:1 })); th.rotation.x = Math.PI; th.position.set(s*.1, .84, -.26); body.add(th); });
+
+    var tail = new THREE.Group(); tail.position.set(0, .78, -.3);
+    var fin = new THREE.Mesh(new THREE.BoxGeometry(.04, .3, .24), glow({ emissiveIntensity:.4 })); fin.position.set(0, -.12, -.1); tail.add(fin); body.add(tail);
+
+    function arm(side){
+      var p = new THREE.Group(); p.position.set(side*.4, 1.34, 0);
+      var pad = new THREE.Mesh(new THREE.SphereGeometry(.14, 10, 10), steel()); p.add(pad);
+      var up = new THREE.Mesh(new THREE.CylinderGeometry(.065, .055, .42, 8), steel()); up.position.y = -.25; p.add(up);
+      var jt = new THREE.Mesh(new THREE.SphereGeometry(.06, 8, 8), glow({ emissiveIntensity:.5 })); jt.position.y = -.46; p.add(jt);
+      var hd = new THREE.Mesh(new THREE.SphereGeometry(.08, 10, 10), dark()); hd.position.y = -.56; p.add(hd);
+      p.rotation.z = side*.1; body.add(p); return p;
+    }
+    var armL = arm(-1), armR = arm(1);
+    var cannon = new THREE.Group(); cannon.position.set(0, -.56, .04);
+    var cb = new THREE.Mesh(new THREE.BoxGeometry(.1, .1, .34), dark()); cb.position.z = .12; cannon.add(cb);
+    var tip = new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, .1, 8), glow({ emissiveIntensity:1 })); tip.rotation.x = Math.PI/2; tip.position.z = .33; cannon.add(tip);
+    var flash = new THREE.Mesh(new THREE.ConeGeometry(.08, .3, 8), new THREE.MeshBasicMaterial({ color:'#9ff6ff', transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false }));
+    flash.rotation.x = Math.PI/2; flash.position.z = .5; cannon.add(flash);
+    armR.add(cannon);
+
+    function leg(side){
+      var p = new THREE.Group(); p.position.set(side*.14, .66, 0);
+      var th = new THREE.Mesh(new THREE.CylinderGeometry(.09, .07, .34, 8), dark()); th.position.y = -.17; p.add(th);
+      var kn = new THREE.Mesh(new THREE.SphereGeometry(.07, 8, 8), glow({ emissiveIntensity:.4 })); kn.position.y = -.35; p.add(kn);
+      var sh = new THREE.Mesh(new THREE.CylinderGeometry(.075, .095, .3, 8), steel()); sh.position.y = -.5; p.add(sh);
+      var ft = new THREE.Mesh(new THREE.BoxGeometry(.17, .08, .3), dark()); ft.position.set(0, -.65, .05); p.add(ft);
+      group.add(p); return p;
+    }
+    var legL = leg(-1), legR = leg(1);
+
+    var slashMat = new THREE.MeshBasicMaterial({ color:accentColor, transparent:true, opacity:0, depthWrite:false });
+    var slash = new THREE.Mesh(new THREE.PlaneGeometry(.01, .01), slashMat); slash.visible = false; group.add(slash);
+
+    return { kind:'plane', group:group, body:body, head:head, armL:armL, armR:armR, legL:legL, legR:legR, cape:tail, sword:cannon, muzzle:flash,
+             wingL:wingL, wingR:wingR, slash:slash, slashMat:slashMat, outfitMats:outfitMats, darkMats:darkMats, accentMats:accentMats };
+  }
+
+  function posePlane(rig, st, now, m){
+    var t = now/1000 + (st.animSeed || 0), lobby = st.id === undefined, fly = !!st.flying || lobby;
+    st.wingK = (st.wingK || 0) + ((fly ? 1 : 0) - (st.wingK || 0)) * .12;
+    var k = st.wingK, flap = fly ? Math.sin(t * (lobby ? 4 : 14)) * .45 * k : 0;
+    rig.wingL.rotation.y = -1.4 * (1 - k); rig.wingR.rotation.y = 1.4 * (1 - k);
+    rig.wingL.rotation.z = -flap; rig.wingR.rotation.z = flap;
+    rig.body.rotation.y = 0; rig.slash.visible = false; rig.slashMat.opacity = 0;
+    var ap = (now - (st.attackAnimAt || -1e9)) / 160, kk = (ap >= 0 && ap < 1) ? 1 - ap : 0;
+    if (st.flying || lobby){
+      rig.body.rotation.x = st.flying ? .3 : .05;
+      if (lobby) rig.body.position.y += .15 + Math.sin(t*2) * .06;
+      rig.legL.rotation.x = .35 + Math.sin(t*3) * .05; rig.legR.rotation.x = .25 + Math.sin(t*3 + 1) * .05;
+      rig.armR.rotation.x = -1.2 - kk*.1; rig.armL.rotation.x = -.25;
+    }
+    if (rig.muzzle) rig.muzzle.material.opacity = kk > .55 ? .95 : 0;
+  }
+
+  // ailes et canons vus depuis la caméra (1re personne)
+  function buildViewPlane(){
+    var root = new THREE.Group(), c = colorsOf('plane');
+    var steel = new THREE.MeshStandardMaterial({ color:c.o, roughness:.4, metalness:.7 });
+    var glowM = new THREE.MeshStandardMaterial({ color:c.a, emissive:new THREE.Color(c.a), emissiveIntensity:.9, roughness:.3 });
+    var wings = [];
+    [-1, 1].forEach(function(s){
+      var arm = new THREE.Mesh(new THREE.BoxGeometry(.09, .09, .5), steel); arm.position.set(s*.3, -.12, -.12); arm.rotation.y = -s*.12; root.add(arm);
+      var tip = new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, .08, 8), glowM); tip.rotation.x = Math.PI/2; tip.position.set(s*.27, -.12, -.4); root.add(tip);
+      var w = new THREE.Mesh(new THREE.BoxGeometry(.6, .015, .22), new THREE.MeshStandardMaterial({ color:c.a, emissive:new THREE.Color(c.a), emissiveIntensity:.5, transparent:true, opacity:.75 }));
+      w.position.set(s*.62, .1, -.35); w.userData.s = s; root.add(w); wings.push(w);
+    });
+    var flash = new THREE.Mesh(new THREE.ConeGeometry(.07, .26, 8), new THREE.MeshBasicMaterial({ color:'#9ff6ff', transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false }));
+    flash.rotation.x = -Math.PI/2; flash.position.set(.27, -.12, -.6); root.add(flash);
+    root.userData.flash = flash;
+    root.userData.tick = function(now, flying){
+      wings.forEach(function(w){ w.visible = flying; w.rotation.z = w.userData.s * Math.sin(now*.014) * .3; });
+    };
+    root.traverse(function(o){ o.frustumCulled = false; });
+    return root;
+  }
+
+  /* ---------- indicateur de vol ---------- */
+  var planeLast = '';
+  function planeHud(state, secs){
+    var txt = state === 'fly' ? '✈ EN VOL · ' + Math.ceil(secs) + ' s'
+            : state === 'wait' ? '⏳ AU SOL · décollage dans ' + Math.ceil(secs) + ' s'
+            : '✈ Appuie sur ATTAQUE pour décoller';
+    if (txt === planeLast) return;
+    planeLast = txt;
+    var el = document.getElementById('plane-hud');
+    if (!el){
+      var jz = document.getElementById('joystick-zone'); if (!jz) return;
+      el = document.createElement('div'); el.id = 'plane-hud'; jz.parentNode.appendChild(el);
+    }
+    el.className = 'plane-hud ' + state; el.textContent = txt;
   }
 
   /* ---------- son du fusil ---------- */
@@ -277,15 +420,18 @@
   var GUN_ICON = '<svg viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="5" fill="none" stroke="#2a0508" stroke-width="2"/><circle cx="12" cy="12" r="1.6"/></svg>';
   function matchOn(){
     Aim.x = Aim.y = 0; Aim.fire = false;
-    if (kind() !== 'barbara') return;
+    if (kind() === 'sergio') return;
     setupAim();
     document.body.classList.add('barbara-on');
+    if (kind() === 'plane') document.body.classList.add('plane-on');
     var atk = document.getElementById('btn-attack');
     if (atk){ if (ATK_SVG_ORIG === null) ATK_SVG_ORIG = atk.innerHTML; atk.innerHTML = GUN_ICON; atk.classList.add('gun'); }
   }
   function matchOff(){
     Aim.x = Aim.y = 0; Aim.fire = false;
-    document.body.classList.remove('barbara-on');
+    document.body.classList.remove('barbara-on', 'plane-on');
+    var ph = document.getElementById('plane-hud'); if (ph) ph.textContent = '';
+    planeLast = '';
     var atk = document.getElementById('btn-attack');
     if (atk && ATK_SVG_ORIG !== null){ atk.innerHTML = ATK_SVG_ORIG; atk.classList.remove('gun'); }
   }
@@ -300,9 +446,14 @@
     try{ var T = HERO_TIERS[getHeroTier()]; hp = T.hp; dmg = T.dmg; }catch(e){}
     return { hp: hp, dmg: dmg };
   }
+  function baseFor(k){
+    if (k === 'plane') return { hp: 50, dmg: 78 };
+    var b = baseStats();
+    return { hp: b.hp, dmg: b.dmg * (k === 'barbara' ? BARBARA_SHOT_K : 1) };
+  }
   function statVals(k, lv){
-    var b = baseStats(), m = 1 + BONUS_PER_LEVEL * lv;
-    return { hp: Math.round(b.hp * m), dmg: Math.round(b.dmg * (k === 'barbara' ? BARBARA_SHOT_K : 1) * m) };
+    var b = baseFor(k), m = 1 + BONUS_PER_LEVEL * lv;
+    return { hp: Math.round(b.hp * m), dmg: Math.round(b.dmg * m) };
   }
   function swatchHtml(list, cur, role){
     return list.map(function(c){
@@ -312,13 +463,13 @@
   function cardHtml(k){
     var I = INFO[k], S = load(), lv = level(k), cur = S.sel === k, cc = colorsOf(k);
     var now = statVals(k, lv), nxt = statVals(k, Math.min(MAX_LEVEL, lv + 1));
-    var maxHp = baseStats().hp * (1 + BONUS_PER_LEVEL * MAX_LEVEL);
-    var maxDm = baseStats().dmg * (k === 'barbara' ? BARBARA_SHOT_K : 1) * (1 + BONUS_PER_LEVEL * MAX_LEVEL);
+    var maxHp = baseFor(k).hp * (1 + BONUS_PER_LEVEL * MAX_LEVEL);
+    var maxDm = baseFor(k).dmg * (1 + BONUS_PER_LEVEL * MAX_LEVEL);
     var pips = ''; for (var i = 0; i < MAX_LEVEL; i++) pips += '<i class="' + (i < lv ? 'on' : '') + '"></i>';
     var bal = Coins.balance(), can = lv < MAX_LEVEL && bal >= UPGRADE_COST;
     var upLabel = lv >= MAX_LEVEL ? 'NIVEAU MAX' : '⬆ AMÉLIORER · ' + Coins.fmt(UPGRADE_COST) + ' 🪙';
     var miss = lv < MAX_LEVEL && bal < UPGRADE_COST ? '<div class="cw-miss">Il te manque <b>' + Coins.fmt(UPGRADE_COST - bal) + '</b> 🪙</div>' : '';
-    var outs = k === 'barbara' ? BARBARA_OUTFITS : OUTFIT_COLORS, acc = k === 'barbara' ? BARBARA_ACCENTS : SWORD_COLORS;
+    var outs = k === 'sergio' ? OUTFIT_COLORS : PAL[k].o, acc = k === 'sergio' ? SWORD_COLORS : PAL[k].a;
     var delta = lv < MAX_LEVEL ? function(a, b){ return '<em>+' + (b - a) + '</em>'; } : function(){ return ''; };
     return '<section class="cw-card" data-kind="' + k + '" style="--tc:' + I.tc + ';--rgb:' + I.rgb + '">' +
       '<div class="cw-tags"><span class="cw-tag main">' + I.tag + '</span><span class="cw-tag">' + I.style + '</span></div>' +
@@ -326,10 +477,10 @@
       '<p class="cw-desc">' + I.desc + '</p>' +
       '<div class="cw-lvl"><span>Niveau <b>' + lv + '</b> / ' + MAX_LEVEL + '</span><div class="cw-pips">' + pips + '</div></div>' +
       '<div class="cw-stat"><div class="cw-sl"><span>❤ Points de vie</span><span><b>' + now.hp + '</b>' + delta(now.hp, nxt.hp) + '</span></div><div class="cw-bar hp"><span style="width:' + Math.min(100, now.hp / maxHp * 100) + '%"></span></div></div>' +
-      '<div class="cw-stat"><div class="cw-sl"><span>' + (k === 'barbara' ? '🎯' : '⚔') + ' ' + I.dmgLabel + '</span><span><b>' + now.dmg + '</b>' + delta(now.dmg, nxt.dmg) + '</span></div><div class="cw-bar dm"><span style="width:' + Math.min(100, now.dmg / maxDm * 100) + '%"></span></div></div>' +
+      '<div class="cw-stat"><div class="cw-sl"><span>' + (k === 'sergio' ? '⚔' : '🎯') + ' ' + I.dmgLabel + '</span><span><b>' + now.dmg + '</b>' + delta(now.dmg, nxt.dmg) + '</span></div><div class="cw-bar dm"><span style="width:' + Math.min(100, now.dmg / maxDm * 100) + '%"></span></div></div>' +
       '<button class="cw-up" data-act="up"' + (can ? '' : ' disabled') + '>' + upLabel + '</button>' + miss +
       '<h3>Couleur de tenue</h3><div class="cw-sws">' + swatchHtml(outs, cc.o, 'o') + '</div>' +
-      '<h3>' + (k === 'barbara' ? 'Couleur d’accents' : 'Couleur d’épée') + '</h3><div class="cw-sws">' + swatchHtml(acc, cc.a, 'a') + '</div>' +
+      '<h3>' + (k === 'sergio' ? 'Couleur d’épée' : 'Couleur d’accents') + '</h3><div class="cw-sws">' + swatchHtml(acc, cc.a, 'a') + '</div>' +
       '<button class="cw-pick' + (cur ? ' on' : '') + '" data-act="pick"' + (cur ? ' disabled' : '') + '>' + (cur ? '✔ ÉQUIPÉ' : 'CHOISIR ' + I.name.toUpperCase()) + '</button>' +
       '</section>';
   }
@@ -387,8 +538,8 @@
     var k = card.getAttribute('data-kind'), S = load();
     if (b.classList.contains('cw-sw')){
       var role = b.getAttribute('data-role'), c = b.getAttribute('data-c');
-      if (k === 'barbara'){
-        var cur = colorsOf('barbara'); cur[role] = c; S.col.barbara = { o: cur.o, a: cur.a }; save(S);
+      if (k !== 'sergio'){
+        var cur = colorsOf(k); cur[role] = c; S.col[k] = { o: cur.o, a: cur.a }; save(S);
       } else if (role === 'o'){ APP.outfitColor = c; Store.save('trugo_outfit', c); }
       else { APP.swordColor = c; Store.save('trugo_sword', c); }
       try{ Lobby.applyCharacterColors(); }catch(_){}
@@ -462,7 +613,7 @@
   window.TrugoChars = {
     kind: kind, colorsOf: colorsOf, mult: mult, level: level, info: INFO,
     isGun: function(){ return kind() === 'barbara'; },
-    buildBarbara: buildBarbara, buildViewGun: buildViewGun, pose: pose, sfx: sfx,
+    buildBarbara: buildBarbara, buildFor: buildFor, buildViewPlane: buildViewPlane, planeHud: planeHud, buildViewGun: buildViewGun, pose: pose, sfx: sfx,
     open: openWin, close: closeWin, coins: Coins, upgradeCost: UPGRADE_COST
   };
 
